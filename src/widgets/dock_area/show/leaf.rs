@@ -135,8 +135,10 @@ impl<Tab> DockArea<'_, Tab> {
             TabBarPosition::Bottom => vec2(pad, pad),
             TabBarPosition::Left | TabBarPosition::Right => Vec2::ZERO,
         };
-        let tabbar_outer_rect =
-            Rect::from_min_max(tabbar_outer_rect.min + pad_vec, tabbar_outer_rect.max - pad_vec);
+        let tabbar_outer_rect = Rect::from_min_max(
+            tabbar_outer_rect.min + pad_vec,
+            tabbar_outer_rect.max - pad_vec,
+        );
         ui.painter().rect_filled(
             tabbar_outer_rect,
             style.tab_bar.corner_radius,
@@ -233,13 +235,13 @@ impl<Tab> DockArea<'_, Tab> {
                 tabs_ui,
                 state,
                 (surface_index, node_index),
-            tab_viewer,
-            tabbar_outer_rect,
-            prefered_width,
-            fade_style,
-            position,
-            collapse_allowed,
-        );
+                tab_viewer,
+                tabbar_outer_rect,
+                prefered_width,
+                fade_style,
+                position,
+                collapse_allowed,
+            );
 
             // Draw hline from tab end to edge of tab bar.
             let px = ui.ctx().pixels_per_point().recip();
@@ -248,20 +250,16 @@ impl<Tab> DockArea<'_, Tab> {
             match position {
                 TabBarPosition::Top => {
                     ui.painter().hline(
-                        tabs_ui
-                            .min_rect()
-                            .right()
-                            .min(clip_rect.right())..=tabbar_outer_rect.right(),
+                        tabs_ui.min_rect().right().min(clip_rect.right())
+                            ..=tabbar_outer_rect.right(),
                         tabbar_outer_rect.bottom() - px,
                         (px, style.tab_bar.hline_color),
                     );
                 }
                 TabBarPosition::Bottom => {
                     ui.painter().hline(
-                        tabs_ui
-                            .min_rect()
-                            .right()
-                            .min(clip_rect.right())..=tabbar_outer_rect.right(),
+                        tabs_ui.min_rect().right().min(clip_rect.right())
+                            ..=tabbar_outer_rect.right(),
                         tabbar_outer_rect.top() + px,
                         (px, style.tab_bar.hline_color),
                     );
@@ -269,20 +267,16 @@ impl<Tab> DockArea<'_, Tab> {
                 TabBarPosition::Left => {
                     ui.painter().vline(
                         tabbar_outer_rect.right() - px,
-                        tabs_ui
-                            .min_rect()
-                            .bottom()
-                            .min(clip_rect.bottom())..=tabbar_outer_rect.bottom(),
+                        tabs_ui.min_rect().bottom().min(clip_rect.bottom())
+                            ..=tabbar_outer_rect.bottom(),
                         (px, style.tab_bar.hline_color),
                     );
                 }
                 TabBarPosition::Right => {
                     ui.painter().vline(
                         tabbar_outer_rect.left() + px,
-                        tabs_ui
-                            .min_rect()
-                            .bottom()
-                            .min(clip_rect.bottom())..=tabbar_outer_rect.bottom(),
+                        tabs_ui.min_rect().bottom().min(clip_rect.bottom())
+                            ..=tabbar_outer_rect.bottom(),
                         (px, style.tab_bar.hline_color),
                     );
                 }
@@ -430,6 +424,14 @@ impl<Tab> DockArea<'_, Tab> {
                 .expect("This node must be a leaf here");
             tabs.len()
         };
+        let hline_color = fade
+            .map(|s| s.tab_bar.hline_color)
+            .unwrap_or_else(|| self.style.as_ref().unwrap().tab_bar.hline_color);
+        let mut min_main: Option<f32> = None;
+        let mut max_main: Option<f32> = None;
+        let mut min_cross: Option<f32> = None;
+        let mut max_cross: Option<f32> = None;
+        let mut baseline_coord: Option<f32> = None;
 
         for tab_index in 0..tabs_len {
             let id = self
@@ -605,43 +607,65 @@ impl<Tab> DockArea<'_, Tab> {
                 .get_leaf_mut()
                 .unwrap();
             let tab = &mut leaf.tabs[tab_index.0];
-            let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
-            let tab_style = tab_viewer.tab_style_override(tab, &style.tab);
-            let tab_style = tab_style.as_ref().unwrap_or(&style.tab);
-
-            // Baseline for inactive tabs.
-            if !is_active || tab_style.hline_below_active_tab_name {
-                let px = 2.0 * tabs_ui.ctx().pixels_per_point().recip();
-                match position {
-                    TabBarPosition::Top => {
-                        tabs_ui.painter().hline(
-                            response.rect.x_range(),
-                            response.rect.bottom() - px,
-                            (px, style.tab_bar.hline_color),
-                        );
-                    }
-                    TabBarPosition::Bottom => {
-                        tabs_ui.painter().hline(
-                            response.rect.x_range(),
-                            response.rect.top() + px,
-                            (px, style.tab_bar.hline_color),
-                        );
-                    }
-                    TabBarPosition::Left => {
-                        tabs_ui.painter().vline(
-                            response.rect.right() - px,
-                            response.rect.y_range(),
-                            (px, style.tab_bar.hline_color),
-                        );
-                    }
-                    TabBarPosition::Right => {
-                        tabs_ui.painter().vline(
-                            response.rect.left() + px,
-                            response.rect.y_range(),
-                            (px, style.tab_bar.hline_color),
-                        );
-                    }
-                };
+            match position {
+                TabBarPosition::Top | TabBarPosition::Bottom => {
+                    min_main = Some(
+                        min_main
+                            .unwrap_or(response.rect.left())
+                            .min(response.rect.left()),
+                    );
+                    max_main = Some(
+                        max_main
+                            .unwrap_or(response.rect.right())
+                            .max(response.rect.right()),
+                    );
+                    min_cross = Some(
+                        min_cross
+                            .unwrap_or(response.rect.top())
+                            .min(response.rect.top()),
+                    );
+                    max_cross = Some(
+                        max_cross
+                            .unwrap_or(response.rect.bottom())
+                            .max(response.rect.bottom()),
+                    );
+                    baseline_coord.get_or_insert_with(|| {
+                        if position == TabBarPosition::Top {
+                            response.rect.bottom()
+                        } else {
+                            response.rect.top()
+                        }
+                    });
+                }
+                TabBarPosition::Left | TabBarPosition::Right => {
+                    min_main = Some(
+                        min_main
+                            .unwrap_or(response.rect.top())
+                            .min(response.rect.top()),
+                    );
+                    max_main = Some(
+                        max_main
+                            .unwrap_or(response.rect.bottom())
+                            .max(response.rect.bottom()),
+                    );
+                    min_cross = Some(
+                        min_cross
+                            .unwrap_or(response.rect.left())
+                            .min(response.rect.left()),
+                    );
+                    max_cross = Some(
+                        max_cross
+                            .unwrap_or(response.rect.right())
+                            .max(response.rect.right()),
+                    );
+                    baseline_coord.get_or_insert_with(|| {
+                        if position == TabBarPosition::Left {
+                            response.rect.right()
+                        } else {
+                            response.rect.left()
+                        }
+                    });
+                }
             }
 
             // Active tab indicator line (drawn inside the tab rect).
@@ -649,17 +673,24 @@ impl<Tab> DockArea<'_, Tab> {
                 let border_px = 2.0 * tabs_ui.ctx().pixels_per_point().recip();
                 let marker_px = 5.0 * tabs_ui.ctx().pixels_per_point().recip();
                 let marker_offset = marker_px * 0.5;
-                let border_color = style.tab_bar.hline_color;
+                let border_color = hline_color;
                 let marker_color = if focused.is_some_and(|f| f == (surface_index, node_index)) {
                     Color32::from_rgb(68, 114, 234)
                 } else {
-                    style.tab_bar.hline_color
+                    hline_color
                 };
                 let y0 = response.rect.top() + marker_px;
                 let y1 = response.rect.bottom() - marker_px;
                 let x0 = response.rect.left() + marker_px;
                 let x1 = response.rect.right() - marker_px;
-                let indicator_painter = tabs_ui.painter().with_clip_rect(tabs_ui.clip_rect());
+                let indicator_painter = tabs_ui
+                    .ctx()
+                    .layer_painter(LayerId::new(
+                        Order::Foreground,
+                        self.id
+                            .with(("tab_indicator", surface_index, node_index, tab_index.0)),
+                    ))
+                    .with_clip_rect(tabs_ui.clip_rect());
                 match position {
                     TabBarPosition::Top => {
                         indicator_painter.vline(
@@ -695,9 +726,9 @@ impl<Tab> DockArea<'_, Tab> {
                             (marker_px, marker_color),
                         );
                     }
-                   TabBarPosition::Left => {
+                    TabBarPosition::Left => {
                         indicator_painter.vline(
-                            response.rect.right() - marker_offset*3.0,
+                            response.rect.right() - marker_offset * 3.0,
                             y0..=y1,
                             (marker_px, marker_color),
                         );
@@ -712,7 +743,7 @@ impl<Tab> DockArea<'_, Tab> {
                             (border_px, border_color),
                         );
                     }
-                   TabBarPosition::Right => {
+                    TabBarPosition::Right => {
                         indicator_painter.vline(
                             response.rect.left() + marker_offset,
                             y0..=y1,
@@ -735,7 +766,7 @@ impl<Tab> DockArea<'_, Tab> {
             // Separators between tabs (always draw).
             if tab_index.0 + 1 != tabs_len {
                 let px = tabs_ui.ctx().pixels_per_point().recip();
-                let color = style.tab_bar.hline_color;
+                let color = hline_color;
                 match position {
                     TabBarPosition::Top | TabBarPosition::Bottom => {
                         tabs_ui.painter().vline(
@@ -772,6 +803,37 @@ impl<Tab> DockArea<'_, Tab> {
                     tab_index,
                     ForcedRemoval(false),
                 ));
+            }
+        }
+
+        // Baseline across all tabs.
+        if let (Some(min_main), Some(max_main), Some(_min_cross), Some(_max_cross), Some(coord)) =
+            (min_main, max_main, min_cross, max_cross, baseline_coord)
+        {
+            let px = 2.0 * tabs_ui.ctx().pixels_per_point().recip();
+            let color = hline_color;
+            match position {
+                TabBarPosition::Top => {
+                    tabs_ui
+                        .painter()
+                        .hline(min_main..=max_main, coord - px, (px, color));
+                }
+                TabBarPosition::Bottom => {
+                    tabs_ui
+                        .painter()
+                        .hline(min_main..=max_main, coord + px, (px, color));
+                }
+                TabBarPosition::Left => {
+                    let offset = 3.0 * px;
+                    tabs_ui
+                        .painter()
+                        .vline(coord - offset, min_main..=max_main, (px, color));
+                }
+                TabBarPosition::Right => {
+                    tabs_ui
+                        .painter()
+                        .vline(coord + px, min_main..=max_main, (px, color));
+                }
             }
         }
 
@@ -892,9 +954,7 @@ impl<Tab> DockArea<'_, Tab> {
                 };
                 Rect::from_min_size(
                     pos2(
-                        tabbar_outer_rect.right()
-                            - Style::TAB_CLOSE_ALL_BUTTON_SIZE
-                            - offset,
+                        tabbar_outer_rect.right() - Style::TAB_CLOSE_ALL_BUTTON_SIZE - offset,
                         tabbar_outer_rect.top(),
                     ),
                     vec2(Style::TAB_CLOSE_ALL_BUTTON_SIZE, tabbar_outer_rect.height()),
@@ -909,9 +969,7 @@ impl<Tab> DockArea<'_, Tab> {
                 Rect::from_min_size(
                     pos2(
                         tabbar_outer_rect.left(),
-                        tabbar_outer_rect.bottom()
-                            - Style::TAB_CLOSE_ALL_BUTTON_SIZE
-                            - offset,
+                        tabbar_outer_rect.bottom() - Style::TAB_CLOSE_ALL_BUTTON_SIZE - offset,
                     ),
                     vec2(tabbar_outer_rect.width(), Style::TAB_CLOSE_ALL_BUTTON_SIZE),
                 )
@@ -1392,8 +1450,8 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             text_rect.set_width(text_rect.width() - close_button_size);
             let text_pos = {
-                let pos =
-                    Align2::CENTER_CENTER.pos_in_rect(&text_rect.shrink2(vec2(x_spacing, y_spacing)));
+                let pos = Align2::CENTER_CENTER
+                    .pos_in_rect(&text_rect.shrink2(vec2(x_spacing, y_spacing)));
                 pos - galley.size() / 2.0
             };
 
@@ -1401,16 +1459,15 @@ impl<Tab> DockArea<'_, Tab> {
                 .add(TextShape::new(text_pos, galley, tab_style.text_color));
         }
 
-            let close_response = show_close_button.then(|| {
-                let mut close_button_rect = tab_rect;
-                if position.is_vertical() {
-                    close_button_rect.set_top(text_rect.bottom() - Style::TAB_CLOSE_BUTTON_OFFSET);
-                } else {
-                    close_button_rect
-                        .set_left(text_rect.right() - Style::TAB_CLOSE_BUTTON_OFFSET);
-                }
-                close_button_rect =
-                    Rect::from_center_size(close_button_rect.center(), Vec2::splat(close_button_size));
+        let close_response = show_close_button.then(|| {
+            let mut close_button_rect = tab_rect;
+            if position.is_vertical() {
+                close_button_rect.set_top(text_rect.bottom() - Style::TAB_CLOSE_BUTTON_OFFSET);
+            } else {
+                close_button_rect.set_left(text_rect.right() - Style::TAB_CLOSE_BUTTON_OFFSET);
+            }
+            close_button_rect =
+                Rect::from_center_size(close_button_rect.center(), Vec2::splat(close_button_size));
 
             let close_response = ui
                 .interact(close_button_rect, id.with("close-button"), Sense::click())
@@ -1547,8 +1604,11 @@ impl<Tab> DockArea<'_, Tab> {
                 } else {
                     scroll_bar_rect.width() - scroll_bar_handle_size
                 };
-                let points_to_scroll_coefficient =
-                    if handle_range > 0.0 { overflow / handle_range } else { 0.0 };
+                let points_to_scroll_coefficient = if handle_range > 0.0 {
+                    overflow / handle_range
+                } else {
+                    0.0
+                };
 
                 if scroll_bar_handle_response.dragged() && handle_range > 0.0 {
                     let pointer = scroll_bar_handle_response.interact_pointer_pos().unwrap();
@@ -1684,10 +1744,9 @@ impl<Tab> DockArea<'_, Tab> {
                 // To avoid anti-aliasing lines when the stroke width is not divisible by two, we
                 // need to calculate the effective anti-aliased stroke width.
                 let effective_stroke_width = (tabs_style.tab_body.stroke.width / 2.0).ceil() * 2.0;
-                let tab_body_rect = ui.clip_rect().expand2(vec2(
-                    effective_stroke_width,
-                    effective_stroke_width,
-                ));
+                let tab_body_rect = ui
+                    .clip_rect()
+                    .expand2(vec2(effective_stroke_width, effective_stroke_width));
                 ui.painter().rect_stroke(
                     rect_stroke_box(tab_body_rect, tabs_style.tab_body.stroke.width),
                     tabs_style.tab_body.corner_radius,
