@@ -143,7 +143,7 @@ impl TabViewer for MyContext {
     }
 
     fn is_closeable(&self, tab: &Self::Tab) -> bool {
-        ["Inspector", "Style Editor"].contains(&tab.as_str())
+        ["Inspector", "Style Editor", "Simple Demo"].contains(&tab.as_str())
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
@@ -177,6 +177,11 @@ impl TabViewer for MyContext {
             "File Browser" | "Asset Manager" => Self::is_descendant(node_index, self.bottom_root),
             _ => true,
         }
+    }
+
+    fn allow_collapse(&self, _surface_index: SurfaceIndex, node_index: NodeIndex) -> bool {
+        // 仅右 2 子树显示折叠按钮
+        Self::is_descendant(node_index, self.bottom_root)
     }
 
 }
@@ -706,20 +711,21 @@ impl eframe::App for MyApp {
         self.context.tab_bar_position = style.tab_bar.position;
         let style = style.clone();
 
-                DockArea::new(&mut self.tree)
-                    .style(style)
-                    .show_close_buttons(self.context.show_close_buttons)
-                    .show_add_buttons(self.context.show_add_buttons)
-                    .draggable_tabs(self.context.draggable_tabs)
-                    .show_tab_name_on_hover(self.context.show_tab_name_on_hover)
-                    .allowed_splits(self.context.allowed_splits)
-                    .show_leaf_close_all_buttons(self.context.show_leaf_close_all)
-                    .show_leaf_collapse_buttons(self.context.show_leaf_collapse)
-                    .show_secondary_button_hint(self.context.show_secondary_button_hint)
-                    .secondary_button_on_modifier(self.context.secondary_button_on_modifier)
-                    .secondary_button_context_menu(self.context.secondary_button_context_menu)
-                    .show_inside(ui, &mut self.context);
-            });
+        DockArea::new(&mut self.tree)
+            .style(style)
+            .show_close_buttons(self.context.show_close_buttons)
+            .show_add_buttons(self.context.show_add_buttons)
+            .draggable_tabs(self.context.draggable_tabs)
+            .show_tab_name_on_hover(self.context.show_tab_name_on_hover)
+            .allowed_splits(self.context.allowed_splits)
+            .show_leaf_close_all_buttons(self.context.show_leaf_close_all)
+            // 使用 TabViewer::allow_collapse 控制各区域折叠按钮
+            .show_leaf_collapse_buttons(true)
+            .show_secondary_button_hint(self.context.show_secondary_button_hint)
+            .secondary_button_on_modifier(self.context.secondary_button_on_modifier)
+            .secondary_button_context_menu(self.context.secondary_button_context_menu)
+            .show_inside(ui, &mut self.context);
+    });
     }
 }
 

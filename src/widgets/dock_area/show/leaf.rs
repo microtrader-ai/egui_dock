@@ -38,6 +38,7 @@ impl<Tab> DockArea<'_, Tab> {
         let default_position = fade_style
             .map(|(style, _)| style.tab_bar.position)
             .unwrap_or_else(|| self.style.as_ref().unwrap().tab_bar.position);
+        let collapse_allowed = tab_viewer.allow_collapse(surface_index, node_index);
         let position = {
             let leaf = self.dock_state[surface_index][node_index]
                 .get_leaf_mut()
@@ -78,6 +79,7 @@ impl<Tab> DockArea<'_, Tab> {
             fade_style.map(|(style, _)| style),
             collapsed,
             position,
+            collapse_allowed,
         );
         self.tab_body(
             ui,
@@ -115,6 +117,7 @@ impl<Tab> DockArea<'_, Tab> {
         fade_style: Option<&Style>,
         collapsed: bool,
         position: TabBarPosition,
+        collapse_allowed: bool,
     ) -> Rect {
         assert!(self.dock_state[surface_index][node_index].is_leaf());
 
@@ -154,7 +157,9 @@ impl<Tab> DockArea<'_, Tab> {
             available_primary -= Style::TAB_CLOSE_ALL_BUTTON_SIZE;
         }
 
-        if self.show_leaf_collapse_buttons {
+        let show_collapse_button = self.show_leaf_collapse_buttons && collapse_allowed;
+
+        if show_collapse_button {
             available_primary -= Style::TAB_COLLAPSE_BUTTON_SIZE;
         }
 
@@ -163,7 +168,7 @@ impl<Tab> DockArea<'_, Tab> {
                 .get_leaf_mut()
                 .expect("This node must be a leaf");
 
-            let collapse_offset = if self.show_leaf_collapse_buttons {
+            let collapse_offset = if show_collapse_button {
                 if is_vertical {
                     vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE)
                 } else {
@@ -198,12 +203,12 @@ impl<Tab> DockArea<'_, Tab> {
             let mut clip_rect = tabbar_outer_rect;
             if is_vertical {
                 clip_rect.set_height(available_primary);
-                if self.show_leaf_collapse_buttons {
+                if show_collapse_button {
                     clip_rect = clip_rect.translate(vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE));
                 }
             } else {
                 clip_rect.set_width(available_primary);
-                if self.show_leaf_collapse_buttons {
+                if show_collapse_button {
                     clip_rect = clip_rect.translate(vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, 0.0));
                 }
             }
@@ -219,12 +224,13 @@ impl<Tab> DockArea<'_, Tab> {
                 tabs_ui,
                 state,
                 (surface_index, node_index),
-                tab_viewer,
-                tabbar_outer_rect,
-                prefered_width,
-                fade_style,
-                position,
-            );
+            tab_viewer,
+            tabbar_outer_rect,
+            prefered_width,
+            fade_style,
+            position,
+            collapse_allowed,
+        );
 
             // Draw hline from tab end to edge of tab bar.
             let px = ui.ctx().pixels_per_point().recip();
@@ -324,10 +330,11 @@ impl<Tab> DockArea<'_, Tab> {
                     disabled,
                     close_window_disabled,
                     position,
+                    show_collapse_button,
                 )
             }
 
-            if self.show_leaf_collapse_buttons {
+            if show_collapse_button {
                 self.tab_collapse(
                     ui,
                     surface_index,
@@ -336,6 +343,7 @@ impl<Tab> DockArea<'_, Tab> {
                     fade_style,
                     collapsed,
                     position,
+                    show_collapse_button,
                 )
             }
 
@@ -376,6 +384,7 @@ impl<Tab> DockArea<'_, Tab> {
         preferred_width: Option<f32>,
         fade: Option<&Style>,
         position: TabBarPosition,
+        _collapse_allowed: bool,
     ) -> bool {
         let mut tab_hovered = false;
 
@@ -738,22 +747,41 @@ impl<Tab> DockArea<'_, Tab> {
         disabled: bool,
         close_window_disabled: bool,
         position: TabBarPosition,
+        show_collapse_button: bool,
     ) {
         let rect = match position {
-            TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
-                pos2(
-                    tabbar_outer_rect.right() - Style::TAB_CLOSE_ALL_BUTTON_SIZE,
-                    tabbar_outer_rect.top(),
-                ),
-                vec2(Style::TAB_CLOSE_ALL_BUTTON_SIZE, tabbar_outer_rect.height()),
-            ),
-            TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
-                pos2(
-                    tabbar_outer_rect.left(),
-                    tabbar_outer_rect.bottom() - Style::TAB_CLOSE_ALL_BUTTON_SIZE,
-                ),
-                vec2(tabbar_outer_rect.width(), Style::TAB_CLOSE_ALL_BUTTON_SIZE),
-            ),
+            TabBarPosition::Top | TabBarPosition::Bottom => {
+                let offset = if show_collapse_button {
+                    Style::TAB_COLLAPSE_BUTTON_SIZE
+                } else {
+                    0.0
+                };
+                Rect::from_min_size(
+                    pos2(
+                        tabbar_outer_rect.right()
+                            - Style::TAB_CLOSE_ALL_BUTTON_SIZE
+                            - offset,
+                        tabbar_outer_rect.top(),
+                    ),
+                    vec2(Style::TAB_CLOSE_ALL_BUTTON_SIZE, tabbar_outer_rect.height()),
+                )
+            }
+            TabBarPosition::Left | TabBarPosition::Right => {
+                let offset = if show_collapse_button {
+                    Style::TAB_COLLAPSE_BUTTON_SIZE
+                } else {
+                    0.0
+                };
+                Rect::from_min_size(
+                    pos2(
+                        tabbar_outer_rect.left(),
+                        tabbar_outer_rect.bottom()
+                            - Style::TAB_CLOSE_ALL_BUTTON_SIZE
+                            - offset,
+                    ),
+                    vec2(tabbar_outer_rect.width(), Style::TAB_CLOSE_ALL_BUTTON_SIZE),
+                )
+            }
         };
 
         let ui = &mut ui.new_child(
@@ -890,6 +918,7 @@ impl<Tab> DockArea<'_, Tab> {
         fade_style: Option<&Style>,
         collapsed: bool,
         position: TabBarPosition,
+        _show_collapse_button: bool,
     ) {
         let rect = match position {
             TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
@@ -1477,7 +1506,7 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_rect: Rect,
         fade: Option<(&Style, f32)>,
         collapsed: bool,
-        position: TabBarPosition,
+        _position: TabBarPosition,
     ) {
         let (body_rect, _body_response) =
             ui.allocate_exact_size(ui.available_size_before_wrap(), Sense::hover());
@@ -1544,21 +1573,10 @@ impl<Tab> DockArea<'_, Tab> {
                 // To avoid anti-aliasing lines when the stroke width is not divisible by two, we
                 // need to calculate the effective anti-aliased stroke width.
                 let effective_stroke_width = (tabs_style.tab_body.stroke.width / 2.0).ceil() * 2.0;
-                let mut tab_body_rect = ui.clip_rect();
-                match position {
-                    TabBarPosition::Top => {
-                        tab_body_rect.set_top(tab_body_rect.top() - effective_stroke_width)
-                    }
-                    TabBarPosition::Bottom => {
-                        tab_body_rect.set_bottom(tab_body_rect.bottom() + effective_stroke_width)
-                    }
-                    TabBarPosition::Left => {
-                        tab_body_rect.set_left(tab_body_rect.left() - effective_stroke_width)
-                    }
-                    TabBarPosition::Right => {
-                        tab_body_rect.set_right(tab_body_rect.right() + effective_stroke_width)
-                    }
-                }
+                let tab_body_rect = ui.clip_rect().expand2(vec2(
+                    effective_stroke_width,
+                    effective_stroke_width,
+                ));
                 ui.painter().rect_stroke(
                     rect_stroke_box(tab_body_rect, tabs_style.tab_body.stroke.width),
                     tabs_style.tab_body.corner_radius,

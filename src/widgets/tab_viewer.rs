@@ -119,6 +119,11 @@ pub trait TabViewer {
         None
     }
 
+    /// Whether a leaf/node should show the collapse button. Default: true.
+    fn allow_collapse(&self, _surface_index: SurfaceIndex, _node_index: NodeIndex) -> bool {
+        true
+    }
+
     /// Specifies a tab's ability to be shown in a window.
     ///
     /// Returns `false` if this tab should never be turned into a window.
