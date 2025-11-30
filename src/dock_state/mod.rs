@@ -608,6 +608,18 @@ impl<Tab> DockState<Tab> {
         }
         None
     }
+
+    /// Returns an immutable reference to the tab at the given indices if it exists.
+    pub(crate) fn get_tab(
+        &self,
+        (surface, node, tab): (SurfaceIndex, NodeIndex, TabIndex),
+    ) -> Option<&Tab> {
+        self[surface]
+            .nodes
+            .get(node.0)
+            .and_then(|node| node.tabs())
+            .and_then(|tabs| tabs.get(tab.0))
+    }
 }
 
 impl<Tab> DockState<Tab>

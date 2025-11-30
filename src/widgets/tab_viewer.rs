@@ -1,4 +1,4 @@
-use crate::{NodeIndex, SurfaceIndex, TabStyle};
+use crate::{NodeIndex, SurfaceIndex, TabBarPosition, TabStyle};
 use egui::{Id, Ui, WidgetText};
 
 /// Defines how a tab should behave and be rendered inside a [`Tree`](crate::Tree).
@@ -90,6 +90,32 @@ pub trait TabViewer {
 
     /// Sets custom style for given tab.
     fn tab_style_override(&self, _tab: &Self::Tab, _global_style: &TabStyle) -> Option<TabStyle> {
+        None
+    }
+
+    /// Whether a tab is allowed to be placed into the given node.
+    ///
+    /// Default: always true.
+    fn allow_move_to(
+        &self,
+        _tab: &Self::Tab,
+        _surface_index: SurfaceIndex,
+        _node_index: NodeIndex,
+    ) -> bool {
+        true
+    }
+
+    /// Override the tab bar position for the given tab. Defaults to the global style.
+    fn tab_bar_position(&self, _tab: &Self::Tab) -> Option<TabBarPosition> {
+        None
+    }
+
+    /// Override the tab bar position for a given node. Defaults to [`TabBarPosition::Top`].
+    fn tab_bar_position_for_node(
+        &self,
+        _surface_index: SurfaceIndex,
+        _node_index: NodeIndex,
+    ) -> Option<TabBarPosition> {
         None
     }
 

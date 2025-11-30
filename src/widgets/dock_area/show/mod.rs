@@ -98,7 +98,18 @@ impl<Tab> DockArea<'_, Tab> {
                             ),
                         }
                     };
-                    self.dock_state.move_tab(source, destination);
+                    let allow_move = match destination {
+                        TabDestination::Node(dst_surface, dst_node, _) => self
+                            .dock_state
+                            .get_tab(source)
+                            .map(|tab| tab_viewer.allow_move_to(tab, dst_surface, dst_node))
+                            .unwrap_or(true),
+                        TabDestination::Window(_) => true,
+                        TabDestination::EmptySurface(_) => false,
+                    };
+                    if allow_move {
+                        self.dock_state.move_tab(source, destination);
+                    }
                 }
             }
         }

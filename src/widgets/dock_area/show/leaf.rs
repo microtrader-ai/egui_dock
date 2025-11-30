@@ -42,9 +42,13 @@ impl<Tab> DockArea<'_, Tab> {
             let leaf = self.dock_state[surface_index][node_index]
                 .get_leaf_mut()
                 .expect("This node must be a leaf");
-            leaf.tabs
-                .get_mut(0)
-                .and_then(|tab| tab_viewer.tab_bar_position(tab))
+            tab_viewer
+                .tab_bar_position_for_node(surface_index, node_index)
+                .or_else(|| {
+                    leaf.tabs
+                        .get(0)
+                        .and_then(|tab| tab_viewer.tab_bar_position(tab))
+                })
                 .unwrap_or(default_position)
         };
         let layout = match position {

@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::collections::HashSet;
+use std::collections::HashMap;
 
 use eframe::NativeOptions;
 use egui::{
@@ -70,6 +71,10 @@ struct MyContext {
     pub style: Option<Style>,
     open_tabs: HashSet<String>,
 
+    tab_positions: HashMap<String, TabBarPosition>,
+    node_positions: HashMap<NodeIndex, TabBarPosition>,
+    left_root: NodeIndex,
+    bottom_root: NodeIndex,
     tab_bar_position: TabBarPosition,
     show_close_buttons: bool,
     show_add_buttons: bool,
@@ -86,6 +91,22 @@ struct MyContext {
 struct MyApp {
     context: MyContext,
     tree: DockState<String>,
+}
+
+impl MyContext {
+    fn is_descendant(candidate: NodeIndex, root: NodeIndex) -> bool {
+        let mut current = candidate;
+        loop {
+            if current == root {
+                return true;
+            }
+            if let Some(parent) = current.parent() {
+                current = parent;
+            } else {
+                return false;
+            }
+        }
+    }
 }
 
 impl TabViewer for MyContext {
@@ -129,6 +150,35 @@ impl TabViewer for MyContext {
         self.open_tabs.remove(tab);
         OnCloseResponse::Close
     }
+
+    fn tab_bar_position(&self, tab: &Self::Tab) -> Option<TabBarPosition> {
+        self.tab_positions.get(tab.as_str()).copied()
+    }
+
+    fn tab_bar_position_for_node(
+        &self,
+        _surface_index: SurfaceIndex,
+        node_index: NodeIndex,
+    ) -> Option<TabBarPosition> {
+        self.node_positions.get(&node_index).copied()
+    }
+
+    fn allow_move_to(
+        &self,
+        tab: &Self::Tab,
+        surface_index: SurfaceIndex,
+        node_index: NodeIndex,
+    ) -> bool {
+        if !surface_index.is_main() {
+            return true;
+        }
+        match tab.as_str() {
+            "Inspector" | "Hierarchy" => Self::is_descendant(node_index, self.left_root),
+            "File Browser" | "Asset Manager" => Self::is_descendant(node_index, self.bottom_root),
+            _ => true,
+        }
+    }
+
 }
 
 impl MyContext {
@@ -547,20 +597,24 @@ impl Default for MyApp {
         let mut dock_state =
             DockState::new(vec!["Simple Demo".to_owned(), "Style Editor".to_owned()]);
         "Undock".clone_into(&mut dock_state.translations.tab_context_menu.eject_button);
-        let [a, b] = dock_state.main_surface_mut().split_left(
+        // Split root vertically: left column + right column (initial content)
+        let [right_column, left_root] = dock_state.main_surface_mut().split_left(
             NodeIndex::root(),
             0.3,
             vec!["Inspector".to_owned()],
         );
-        let [_, _] = dock_state.main_surface_mut().split_below(
-            a,
+
+        // Right column: split horizontally into top (existing content) and bottom (File/Asset)
+        let [right_top, bottom_node] = dock_state.main_surface_mut().split_below(
+            right_column,
             0.7,
             vec!["File Browser".to_owned(), "Asset Manager".to_owned()],
         );
-        let [_, _] =
-            dock_state
-                .main_surface_mut()
-                .split_below(b, 0.5, vec!["Hierarchy".to_owned()]);
+
+        // Left column: split horizontally into two leaves
+        let [_left_top, _left_bottom] = dock_state
+            .main_surface_mut()
+            .split_below(left_root, 0.5, vec!["Hierarchy".to_owned()]);
 
         let mut open_tabs = HashSet::new();
 
@@ -571,12 +625,26 @@ impl Default for MyApp {
                 }
             }
         }
+        let mut tab_positions = HashMap::new();
+        tab_positions.insert("Inspector".to_owned(), TabBarPosition::Left);
+        tab_positions.insert("Hierarchy".to_owned(), TabBarPosition::Left);
+        tab_positions.insert("File Browser".to_owned(), TabBarPosition::Bottom);
+        tab_positions.insert("Asset Manager".to_owned(), TabBarPosition::Bottom);
+        tab_positions.insert("Style Editor".to_owned(), tab_bar_position);
+        tab_positions.insert("Simple Demo".to_owned(), tab_bar_position);
+        let mut node_positions = HashMap::new();
+        node_positions.insert(bottom_node, TabBarPosition::Bottom);
+        node_positions.insert(right_top, tab_bar_position);
         let context = MyContext {
             title: "Hello".to_string(),
             age: 24,
             style: None,
             open_tabs,
 
+            tab_positions,
+            node_positions,
+            left_root,
+            bottom_root: bottom_node,
             tab_bar_position,
             show_leaf_close_all: true,
             show_leaf_collapse: true,
