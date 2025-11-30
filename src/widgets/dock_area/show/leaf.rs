@@ -4,7 +4,7 @@ use egui::{
     PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape, Stroke, StrokeKind, TextStyle,
     Ui, UiBuilder, Vec2, WidgetText,
 };
-use std::ops::RangeInclusive;
+use std::{f32::consts::FRAC_PI_2, ops::RangeInclusive};
 
 use crate::dock_area::tab_removal::{ForcedRemoval, TabRemoval};
 use crate::node::LeafNode;
@@ -14,7 +14,8 @@ use crate::{
         state::State,
     },
     utils::{fade_visuals, rect_set_size_centered, rect_stroke_box},
-    DockArea, Node, NodeIndex, Style, SurfaceIndex, TabAddAlign, TabIndex, TabStyle, TabViewer,
+    DockArea, Node, NodeIndex, Style, SurfaceIndex, TabAddAlign, TabBarPosition, TabIndex,
+    TabStyle, TabViewer,
 };
 
 use crate::tab_viewer::OnCloseResponse;
@@ -34,10 +35,19 @@ impl<Tab> DockArea<'_, Tab> {
         let rect = self.dock_state[surface_index][node_index]
             .rect()
             .expect("This node must be a leaf");
+        let position = fade_style
+            .map(|(style, _)| style.tab_bar.position)
+            .unwrap_or_else(|| self.style.as_ref().unwrap().tab_bar.position);
+        let layout = match position {
+            TabBarPosition::Top => Layout::top_down_justified(Align::Min),
+            TabBarPosition::Bottom => Layout::bottom_up(Align::Min),
+            TabBarPosition::Left => Layout::left_to_right(Align::Min),
+            TabBarPosition::Right => Layout::right_to_left(Align::Min),
+        };
         let ui = &mut ui.new_child(
             UiBuilder::new()
                 .max_rect(rect)
-                .layout(Layout::top_down_justified(Align::Min))
+                .layout(layout)
                 .id_salt((node_index, "node")),
         );
         let spacing = ui.spacing().item_spacing;
@@ -54,6 +64,7 @@ impl<Tab> DockArea<'_, Tab> {
             tab_viewer,
             fade_style.map(|(style, _)| style),
             collapsed,
+            position,
         );
         self.tab_body(
             ui,
@@ -64,6 +75,7 @@ impl<Tab> DockArea<'_, Tab> {
             tabbar_rect,
             fade_style,
             collapsed,
+            position,
         );
 
         let tabs = self.dock_state[surface_index][node_index]
@@ -89,14 +101,18 @@ impl<Tab> DockArea<'_, Tab> {
         tab_viewer: &mut impl TabViewer<Tab = Tab>,
         fade_style: Option<&Style>,
         collapsed: bool,
+        position: TabBarPosition,
     ) -> Rect {
         assert!(self.dock_state[surface_index][node_index].is_leaf());
 
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
-        let (tabbar_outer_rect, tabbar_response) = ui.allocate_exact_size(
-            vec2(ui.available_width(), style.tab_bar.height),
-            Sense::hover(),
-        );
+        let is_vertical = position.is_vertical();
+        let bar_size = if is_vertical {
+            vec2(style.tab_bar.height, ui.available_height())
+        } else {
+            vec2(ui.available_width(), style.tab_bar.height)
+        };
+        let (tabbar_outer_rect, tabbar_response) = ui.allocate_exact_size(bar_size, Sense::hover());
         ui.painter().rect_filled(
             tabbar_outer_rect,
             style.tab_bar.corner_radius,
@@ -105,56 +121,78 @@ impl<Tab> DockArea<'_, Tab> {
 
         let tabbar_outer_rect = tabbar_outer_rect - style.tab_bar.inner_margin;
 
-        let mut available_width = tabbar_outer_rect.width();
-        let scroll_bar_width = available_width;
-        if available_width == 0.0 {
+        let mut available_primary = if is_vertical {
+            tabbar_outer_rect.height()
+        } else {
+            tabbar_outer_rect.width()
+        };
+        let scroll_bar_width = available_primary;
+        if available_primary == 0.0 {
             return tabbar_outer_rect;
         }
 
         // Reserve space for the buttons at the ends of the tab bar.
 
         if self.show_add_buttons {
-            available_width -= Style::TAB_ADD_BUTTON_SIZE;
+            available_primary -= Style::TAB_ADD_BUTTON_SIZE;
         }
 
         if self.show_leaf_close_all_buttons {
-            available_width -= Style::TAB_CLOSE_ALL_BUTTON_SIZE;
+            available_primary -= Style::TAB_CLOSE_ALL_BUTTON_SIZE;
         }
 
         if self.show_leaf_collapse_buttons {
-            available_width -= Style::TAB_COLLAPSE_BUTTON_SIZE;
+            available_primary -= Style::TAB_COLLAPSE_BUTTON_SIZE;
         }
 
-        let (actual_width, tab_hovered) = {
+        let (actual_primary, tab_hovered) = {
             let leaf = self.dock_state[surface_index][node_index]
                 .get_leaf_mut()
                 .expect("This node must be a leaf");
 
+            let collapse_offset = if self.show_leaf_collapse_buttons {
+                if is_vertical {
+                    vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE)
+                } else {
+                    vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, 0.0)
+                }
+            } else {
+                Vec2::ZERO
+            };
+            let scroll_offset = if is_vertical {
+                vec2(0.0, -leaf.scroll)
+            } else {
+                vec2(-leaf.scroll, 0.0)
+            };
             let tabbar_inner_rect = Rect::from_min_size(
-                (tabbar_outer_rect.min - pos2(-leaf.scroll, 0.0)
-                    + vec2(
-                        if self.show_leaf_collapse_buttons {
-                            Style::TAB_COLLAPSE_BUTTON_SIZE
-                        } else {
-                            0.0
-                        },
-                        0.0,
-                    ))
-                .to_pos2(),
+                tabbar_outer_rect.min + scroll_offset + collapse_offset,
                 vec2(tabbar_outer_rect.width(), tabbar_outer_rect.height()),
             );
+
+            let tabs_layout = if is_vertical {
+                Layout::top_down(Align::Min)
+            } else {
+                Layout::left_to_right(Align::Center)
+            };
 
             let tabs_ui = &mut ui.new_child(
                 UiBuilder::new()
                     .max_rect(tabbar_inner_rect)
-                    .layout(Layout::left_to_right(Align::Center))
+                    .layout(tabs_layout)
                     .id_salt("tabs"),
             );
 
             let mut clip_rect = tabbar_outer_rect;
-            clip_rect.set_width(available_width);
-            if self.show_leaf_collapse_buttons {
-                clip_rect = clip_rect.translate(vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, 0.0));
+            if is_vertical {
+                clip_rect.set_height(available_primary);
+                if self.show_leaf_collapse_buttons {
+                    clip_rect = clip_rect.translate(vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE));
+                }
+            } else {
+                clip_rect.set_width(available_primary);
+                if self.show_leaf_collapse_buttons {
+                    clip_rect = clip_rect.translate(vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, 0.0));
+                }
             }
             tabs_ui.set_clip_rect(clip_rect);
 
@@ -162,7 +200,7 @@ impl<Tab> DockArea<'_, Tab> {
             let prefered_width = style
                 .tab_bar
                 .fill_tab_bar
-                .then_some(available_width / (leaf.tabs.len() as f32));
+                .then_some(available_primary / (leaf.tabs.len() as f32));
 
             let tab_hovered = self.tabs(
                 tabs_ui,
@@ -172,24 +210,65 @@ impl<Tab> DockArea<'_, Tab> {
                 tabbar_outer_rect,
                 prefered_width,
                 fade_style,
+                position,
             );
 
             // Draw hline from tab end to edge of tab bar.
             let px = ui.ctx().pixels_per_point().recip();
             let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
 
-            ui.painter().hline(
-                tabs_ui.min_rect().right().min(clip_rect.right())..=tabbar_outer_rect.right(),
-                tabbar_outer_rect.bottom() - px,
-                (px, style.tab_bar.hline_color),
-            );
+            match position {
+                TabBarPosition::Top => {
+                    ui.painter().hline(
+                        tabs_ui
+                            .min_rect()
+                            .right()
+                            .min(clip_rect.right())..=tabbar_outer_rect.right(),
+                        tabbar_outer_rect.bottom() - px,
+                        (px, style.tab_bar.hline_color),
+                    );
+                }
+                TabBarPosition::Bottom => {
+                    ui.painter().hline(
+                        tabs_ui
+                            .min_rect()
+                            .right()
+                            .min(clip_rect.right())..=tabbar_outer_rect.right(),
+                        tabbar_outer_rect.top() + px,
+                        (px, style.tab_bar.hline_color),
+                    );
+                }
+                TabBarPosition::Left => {
+                    ui.painter().vline(
+                        tabbar_outer_rect.right() - px,
+                        tabs_ui
+                            .min_rect()
+                            .bottom()
+                            .min(clip_rect.bottom())..=tabbar_outer_rect.bottom(),
+                        (px, style.tab_bar.hline_color),
+                    );
+                }
+                TabBarPosition::Right => {
+                    ui.painter().vline(
+                        tabbar_outer_rect.left() + px,
+                        tabs_ui
+                            .min_rect()
+                            .bottom()
+                            .min(clip_rect.bottom())..=tabbar_outer_rect.bottom(),
+                        (px, style.tab_bar.hline_color),
+                    );
+                }
+            };
 
             // Add button at the ends of the tab bar.
             if self.show_add_buttons {
+                let remaining_space = if is_vertical {
+                    (clip_rect.height() - tabs_ui.min_rect().height()).at_least(0.0)
+                } else {
+                    (clip_rect.width() - tabs_ui.min_rect().width()).at_least(0.0)
+                };
                 let offset = match style.buttons.add_tab_align {
-                    TabAddAlign::Left => {
-                        (clip_rect.width() - tabs_ui.min_rect().width()).at_least(0.0)
-                    }
+                    TabAddAlign::Left => remaining_space,
                     TabAddAlign::Right => 0.0,
                 } + if self.show_leaf_close_all_buttons {
                     Style::TAB_CLOSE_ALL_BUTTON_SIZE
@@ -204,6 +283,7 @@ impl<Tab> DockArea<'_, Tab> {
                     tabbar_outer_rect,
                     offset,
                     fade_style,
+                    position,
                 );
             }
 
@@ -230,6 +310,7 @@ impl<Tab> DockArea<'_, Tab> {
                     fade_style,
                     disabled,
                     close_window_disabled,
+                    position,
                 )
             }
 
@@ -241,22 +322,31 @@ impl<Tab> DockArea<'_, Tab> {
                     tabbar_outer_rect,
                     fade_style,
                     collapsed,
+                    position,
                 )
             }
 
-            (tabs_ui.min_rect().width(), tab_hovered)
+            (
+                if is_vertical {
+                    tabs_ui.min_rect().height()
+                } else {
+                    tabs_ui.min_rect().width()
+                },
+                tab_hovered,
+            )
         };
 
         self.tab_bar_scroll(
             ui,
             state,
             (surface_index, node_index),
-            actual_width,
-            available_width,
+            actual_primary,
+            available_primary,
             scroll_bar_width,
             &tabbar_response,
             tab_hovered,
             fade_style,
+            position,
         );
 
         tabbar_outer_rect
@@ -272,6 +362,7 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_outer_rect: Rect,
         preferred_width: Option<f32>,
         fade: Option<&Style>,
+        position: TabBarPosition,
     ) -> bool {
         let mut tab_hovered = false;
 
@@ -286,6 +377,7 @@ impl<Tab> DockArea<'_, Tab> {
         };
 
         for tab_index in 0..tabs_len {
+            let is_vertical = position.is_vertical();
             let id = self
                 .id
                 .with((surface_index, "surface"))
@@ -330,6 +422,7 @@ impl<Tab> DockArea<'_, Tab> {
                             is_being_dragged,
                             preferred_width,
                             show_close_button,
+                            position,
                             fade,
                         )
                     })
@@ -364,7 +457,12 @@ impl<Tab> DockArea<'_, Tab> {
                 (response, title_id)
             } else {
                 if tab_index.0 != 0 {
-                    tabs_ui.allocate_space(vec2(tab_style.spacing, 0.0));
+                    let spacing = if is_vertical {
+                        vec2(0.0, tab_style.spacing)
+                    } else {
+                        vec2(tab_style.spacing, 0.0)
+                    };
+                    tabs_ui.allocate_space(spacing);
                 }
                 let (mut response, close_response) = self.tab_title(
                     tabs_ui,
@@ -376,6 +474,7 @@ impl<Tab> DockArea<'_, Tab> {
                     is_being_dragged,
                     preferred_width,
                     show_close_button,
+                    position,
                     fade,
                 );
                 let title_id = response.id;
@@ -467,11 +566,36 @@ impl<Tab> DockArea<'_, Tab> {
 
             if !is_active || tab_style.hline_below_active_tab_name {
                 let px = tabs_ui.ctx().pixels_per_point().recip();
-                tabs_ui.painter().hline(
-                    response.rect.x_range(),
-                    tabbar_outer_rect.bottom() - px,
-                    (px, style.tab_bar.hline_color),
-                );
+                match position {
+                    TabBarPosition::Top => {
+                        tabs_ui.painter().hline(
+                            response.rect.x_range(),
+                            tabbar_outer_rect.bottom() - px,
+                            (px, style.tab_bar.hline_color),
+                        );
+                    }
+                    TabBarPosition::Bottom => {
+                        tabs_ui.painter().hline(
+                            response.rect.x_range(),
+                            tabbar_outer_rect.top() + px,
+                            (px, style.tab_bar.hline_color),
+                        );
+                    }
+                    TabBarPosition::Left => {
+                        tabs_ui.painter().vline(
+                            tabbar_outer_rect.right() - px,
+                            response.rect.y_range(),
+                            (px, style.tab_bar.hline_color),
+                        );
+                    }
+                    TabBarPosition::Right => {
+                        tabs_ui.painter().vline(
+                            tabbar_outer_rect.left() + px,
+                            response.rect.y_range(),
+                            (px, style.tab_bar.hline_color),
+                        );
+                    }
+                };
             }
 
             if response.clicked()
@@ -509,11 +633,24 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_outer_rect: Rect,
         offset: f32,
         fade_style: Option<&Style>,
+        position: TabBarPosition,
     ) {
-        let rect = Rect::from_min_max(
-            tabbar_outer_rect.right_top() - vec2(Style::TAB_ADD_BUTTON_SIZE + offset, 0.0),
-            tabbar_outer_rect.right_bottom() - vec2(offset, 2.0),
-        );
+        let rect = match position {
+            TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
+                pos2(
+                    tabbar_outer_rect.right() - Style::TAB_ADD_BUTTON_SIZE - offset,
+                    tabbar_outer_rect.top(),
+                ),
+                vec2(Style::TAB_ADD_BUTTON_SIZE, tabbar_outer_rect.height()),
+            ),
+            TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
+                pos2(
+                    tabbar_outer_rect.left(),
+                    tabbar_outer_rect.bottom() - Style::TAB_ADD_BUTTON_SIZE - offset,
+                ),
+                vec2(tabbar_outer_rect.width(), Style::TAB_ADD_BUTTON_SIZE),
+            ),
+        };
 
         let ui = &mut ui.new_child(
             UiBuilder::new()
@@ -549,14 +686,16 @@ impl<Tab> DockArea<'_, Tab> {
         );
 
         // Draw button left border.
-        ui.painter().vline(
-            rect.left(),
-            rect.y_range(),
-            Stroke::new(
-                ui.ctx().pixels_per_point().recip(),
-                style.buttons.add_tab_border_color,
-            ),
+        let stroke = Stroke::new(
+            ui.ctx().pixels_per_point().recip(),
+            style.buttons.add_tab_border_color,
         );
+        if position.is_vertical() {
+            ui.painter()
+                .hline(rect.x_range(), rect.top(), stroke.clone());
+        } else {
+            ui.painter().vline(rect.left(), rect.y_range(), stroke);
+        }
 
         let popup_id = ui.id().with("tab_add_popup");
         if self.show_add_popup {
@@ -585,11 +724,24 @@ impl<Tab> DockArea<'_, Tab> {
         fade_style: Option<&Style>,
         disabled: bool,
         close_window_disabled: bool,
+        position: TabBarPosition,
     ) {
-        let rect = Rect::from_min_max(
-            tabbar_outer_rect.right_top() - vec2(Style::TAB_CLOSE_ALL_BUTTON_SIZE, 0.0),
-            tabbar_outer_rect.right_bottom() - vec2(0.0, 2.0),
-        );
+        let rect = match position {
+            TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
+                pos2(
+                    tabbar_outer_rect.right() - Style::TAB_CLOSE_ALL_BUTTON_SIZE,
+                    tabbar_outer_rect.top(),
+                ),
+                vec2(Style::TAB_CLOSE_ALL_BUTTON_SIZE, tabbar_outer_rect.height()),
+            ),
+            TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
+                pos2(
+                    tabbar_outer_rect.left(),
+                    tabbar_outer_rect.bottom() - Style::TAB_CLOSE_ALL_BUTTON_SIZE,
+                ),
+                vec2(tabbar_outer_rect.width(), Style::TAB_CLOSE_ALL_BUTTON_SIZE),
+            ),
+        };
 
         let ui = &mut ui.new_child(
             UiBuilder::new()
@@ -699,14 +851,16 @@ impl<Tab> DockArea<'_, Tab> {
         }
 
         // Draw button left border.
-        ui.painter().vline(
-            rect.left(),
-            rect.y_range(),
-            Stroke::new(
-                ui.ctx().pixels_per_point().recip(),
-                style.buttons.close_all_tabs_border_color,
-            ),
+        let stroke = Stroke::new(
+            ui.ctx().pixels_per_point().recip(),
+            style.buttons.close_all_tabs_border_color,
         );
+        if position.is_vertical() {
+            ui.painter()
+                .hline(rect.x_range(), rect.top(), stroke.clone());
+        } else {
+            ui.painter().vline(rect.left(), rect.y_range(), stroke);
+        }
 
         if !disabled && !on_secondary_button {
             response = self.show_tooltip_hints(surface_index, response);
@@ -722,11 +876,18 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_outer_rect: Rect,
         fade_style: Option<&Style>,
         collapsed: bool,
+        position: TabBarPosition,
     ) {
-        let rect = Rect::from_min_max(
-            tabbar_outer_rect.left_top(),
-            tabbar_outer_rect.left_bottom() + vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, 0.0),
-        );
+        let rect = match position {
+            TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
+                tabbar_outer_rect.left_top(),
+                vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, tabbar_outer_rect.height()),
+            ),
+            TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
+                tabbar_outer_rect.left_top(),
+                vec2(tabbar_outer_rect.width(), Style::TAB_COLLAPSE_BUTTON_SIZE),
+            ),
+        };
 
         let ui = &mut ui.new_child(
             UiBuilder::new()
@@ -767,14 +928,16 @@ impl<Tab> DockArea<'_, Tab> {
         }
 
         // Draw button right border.
-        ui.painter().vline(
-            rect.right(),
-            rect.y_range(),
-            Stroke::new(
-                ui.ctx().pixels_per_point().recip(),
-                style.buttons.collapse_tabs_border_color,
-            ),
+        let stroke = Stroke::new(
+            ui.ctx().pixels_per_point().recip(),
+            style.buttons.collapse_tabs_border_color,
         );
+        if position.is_vertical() {
+            ui.painter()
+                .hline(rect.x_range(), rect.bottom(), stroke.clone());
+        } else {
+            ui.painter().vline(rect.right(), rect.y_range(), stroke);
+        }
 
         if response.clicked() {
             if on_secondary_button {
@@ -965,26 +1128,40 @@ impl<Tab> DockArea<'_, Tab> {
         is_being_dragged: bool,
         preferred_width: Option<f32>,
         show_close_button: bool,
+        position: TabBarPosition,
         fade: Option<&Style>,
     ) -> (Response, Option<Response>) {
         let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
         let galley = label.into_galley(ui, None, f32::INFINITY, TextStyle::Button);
         let x_spacing = 8.0;
+        let y_spacing = 6.0;
         let text_width = galley.size().x + 2.0 * x_spacing;
+        let text_height = galley.size().y + 2.0 * y_spacing;
+        let tab_thickness = if position.is_vertical() {
+            style.tab_bar.height.max(text_height)
+        } else {
+            style.tab_bar.height
+        };
         let close_button_size = if show_close_button {
-            Style::TAB_CLOSE_BUTTON_SIZE.min(style.tab_bar.height)
+            Style::TAB_CLOSE_BUTTON_SIZE.min(tab_thickness)
         } else {
             0.0
         };
 
         // Compute total width of the tab bar.
+        let text_primary = text_width;
         let minimum_width = tab_style
             .minimum_width
             .unwrap_or(0.0)
-            .at_least(text_width + close_button_size);
-        let tab_width = preferred_width.unwrap_or(0.0).at_least(minimum_width);
+            .at_least(text_primary + close_button_size);
+        let tab_primary = preferred_width.unwrap_or(0.0).at_least(minimum_width);
 
-        let (_, tab_rect) = ui.allocate_space(vec2(tab_width, ui.available_height()));
+        let tab_size = if position.is_vertical() {
+            vec2(tab_thickness, tab_primary)
+        } else {
+            vec2(tab_primary, tab_thickness)
+        };
+        let (_, tab_rect) = ui.allocate_space(tab_size);
         let mut response = ui.interact(tab_rect, id, Sense::click_and_drag());
         if ui.ctx().dragged_id().is_none() && self.draggable_tabs {
             response = response.on_hover_cursor(CursorIcon::Grab);
@@ -1023,29 +1200,79 @@ impl<Tab> DockArea<'_, Tab> {
         );
         if !is_being_dragged {
             // Make the tab name area connect with the tab ui area.
-            ui.painter().hline(
-                RangeInclusive::new(
-                    stroke_rect.min.x + f32::max(tab_style.corner_radius.sw.into(), 1.5),
-                    stroke_rect.max.x - f32::max(tab_style.corner_radius.se.into(), 1.5),
-                ),
-                stroke_rect.bottom(),
-                Stroke::new(2.0, tab_style.bg_fill),
-            );
+            match position {
+                TabBarPosition::Top => {
+                    ui.painter().hline(
+                        RangeInclusive::new(
+                            stroke_rect.min.x + f32::max(tab_style.corner_radius.sw.into(), 1.5),
+                            stroke_rect.max.x - f32::max(tab_style.corner_radius.se.into(), 1.5),
+                        ),
+                        stroke_rect.bottom(),
+                        Stroke::new(2.0, tab_style.bg_fill),
+                    );
+                }
+                TabBarPosition::Bottom => {
+                    ui.painter().hline(
+                        RangeInclusive::new(
+                            stroke_rect.min.x + f32::max(tab_style.corner_radius.nw.into(), 1.5),
+                            stroke_rect.max.x - f32::max(tab_style.corner_radius.ne.into(), 1.5),
+                        ),
+                        stroke_rect.top(),
+                        Stroke::new(2.0, tab_style.bg_fill),
+                    );
+                }
+                TabBarPosition::Left => {
+                    ui.painter().vline(
+                        stroke_rect.right(),
+                        RangeInclusive::new(
+                            stroke_rect.min.y + f32::max(tab_style.corner_radius.se.into(), 1.5),
+                            stroke_rect.max.y - f32::max(tab_style.corner_radius.ne.into(), 1.5),
+                        ),
+                        Stroke::new(2.0, tab_style.bg_fill),
+                    );
+                }
+                TabBarPosition::Right => {
+                    ui.painter().vline(
+                        stroke_rect.left(),
+                        RangeInclusive::new(
+                            stroke_rect.min.y + f32::max(tab_style.corner_radius.sw.into(), 1.5),
+                            stroke_rect.max.y - f32::max(tab_style.corner_radius.nw.into(), 1.5),
+                        ),
+                        Stroke::new(2.0, tab_style.bg_fill),
+                    );
+                }
+            };
         }
 
         let mut text_rect = tab_rect;
-        text_rect.set_width(text_rect.width() - close_button_size);
-        let text_pos = {
-            let pos = Align2::CENTER_CENTER.pos_in_rect(&text_rect.shrink2(vec2(x_spacing, 0.0)));
-            pos - galley.size() / 2.0
-        };
+        if position.is_vertical() {
+            text_rect.set_height(text_rect.height() - close_button_size);
+            let pos_center = text_rect.shrink2(vec2(y_spacing, y_spacing)).center();
+            let pos = pos_center - galley.rect.center().to_vec2();
+            let angle = FRAC_PI_2;
+            let text_shape = TextShape::new(pos, galley.clone(), tab_style.text_color)
+                .with_override_text_color(tab_style.text_color)
+                .with_angle_and_anchor(angle, Align2::CENTER_CENTER);
+            ui.painter().add(text_shape);
+        } else {
+            text_rect.set_width(text_rect.width() - close_button_size);
+            let text_pos = {
+                let pos =
+                    Align2::CENTER_CENTER.pos_in_rect(&text_rect.shrink2(vec2(x_spacing, 0.0)));
+                pos - galley.size() / 2.0
+            };
 
-        ui.painter()
-            .add(TextShape::new(text_pos, galley, tab_style.text_color));
+            ui.painter()
+                .add(TextShape::new(text_pos, galley, tab_style.text_color));
+        }
 
         let close_response = show_close_button.then(|| {
             let mut close_button_rect = tab_rect;
-            close_button_rect.set_left(text_rect.right());
+            if position.is_vertical() {
+                close_button_rect.set_top(text_rect.bottom());
+            } else {
+                close_button_rect.set_left(text_rect.right());
+            }
             close_button_rect =
                 Rect::from_center_size(close_button_rect.center(), Vec2::splat(close_button_size));
 
@@ -1100,6 +1327,7 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_response: &Response,
         tab_hovered: bool,
         fade_style: Option<&Style>,
+        position: TabBarPosition,
     ) {
         assert_ne!(available_width, 0.0);
 
@@ -1115,24 +1343,45 @@ impl<Tab> DockArea<'_, Tab> {
             if style.tab_bar.show_scroll_bar_on_overflow {
                 // Draw scroll bar
                 let bar_height = 7.5;
-                let (scroll_bar_rect, _scroll_bar_response) = ui.allocate_exact_size(
-                    vec2(scroll_bar_width, bar_height),
-                    Sense::click_and_drag(),
-                );
+                let bar_size = if position.is_vertical() {
+                    vec2(bar_height, scroll_bar_width)
+                } else {
+                    vec2(scroll_bar_width, bar_height)
+                };
+                let (scroll_bar_rect, _scroll_bar_response) =
+                    ui.allocate_exact_size(bar_size, Sense::click_and_drag());
 
                 // Compute scroll bar handle position and size.
                 let overflow_ratio = actual_width / available_width;
                 let scroll_ratio = -leaf.scroll / overflow;
 
-                let scroll_bar_handle_size = overflow_ratio.recip() * scroll_bar_rect.width();
-                let scroll_bar_handle_start = lerp(
-                    scroll_bar_rect.left()..=scroll_bar_rect.right() - scroll_bar_handle_size,
-                    scroll_ratio,
-                );
-                let scroll_bar_handle_rect = Rect::from_min_size(
-                    pos2(scroll_bar_handle_start, scroll_bar_rect.min.y),
-                    vec2(scroll_bar_handle_size, bar_height),
-                );
+                let scroll_bar_handle_size = if position.is_vertical() {
+                    overflow_ratio.recip() * scroll_bar_rect.height()
+                } else {
+                    overflow_ratio.recip() * scroll_bar_rect.width()
+                };
+                let scroll_bar_handle_start = if position.is_vertical() {
+                    lerp(
+                        scroll_bar_rect.top()..=scroll_bar_rect.bottom() - scroll_bar_handle_size,
+                        scroll_ratio,
+                    )
+                } else {
+                    lerp(
+                        scroll_bar_rect.left()..=scroll_bar_rect.right() - scroll_bar_handle_size,
+                        scroll_ratio,
+                    )
+                };
+                let scroll_bar_handle_rect = if position.is_vertical() {
+                    Rect::from_min_size(
+                        pos2(scroll_bar_rect.min.x, scroll_bar_handle_start),
+                        vec2(bar_height, scroll_bar_handle_size),
+                    )
+                } else {
+                    Rect::from_min_size(
+                        pos2(scroll_bar_handle_start, scroll_bar_rect.min.y),
+                        vec2(scroll_bar_handle_size, bar_height),
+                    )
+                };
 
                 let scroll_bar_handle_response = ui.interact(
                     scroll_bar_handle_rect,
@@ -1141,17 +1390,32 @@ impl<Tab> DockArea<'_, Tab> {
                 );
 
                 // Coefficient to apply to input displacements so that we move the scroll by the correct amount.
-                let points_to_scroll_coefficient =
-                    overflow / (scroll_bar_rect.width() - scroll_bar_handle_size);
+                let points_to_scroll_coefficient = overflow
+                    / if position.is_vertical() {
+                        scroll_bar_rect.height() - scroll_bar_handle_size
+                    } else {
+                        scroll_bar_rect.width() - scroll_bar_handle_size
+                    };
 
-                leaf.scroll -=
-                    scroll_bar_handle_response.drag_delta().x * points_to_scroll_coefficient;
+                let drag_delta = scroll_bar_handle_response.drag_delta();
+                let drag_delta_primary = if position.is_vertical() {
+                    drag_delta.y
+                } else {
+                    drag_delta.x
+                };
+
+                leaf.scroll -= drag_delta_primary * points_to_scroll_coefficient;
 
                 if let Some(pos) = state.last_hover_pos {
                     if scroll_bar_rect.contains(pos) {
-                        leaf.scroll += ui
-                            .input(|i| i.smooth_scroll_delta.y + i.smooth_scroll_delta.x)
-                            * points_to_scroll_coefficient;
+                        let scroll_delta = ui.input(|i| {
+                            if position.is_vertical() {
+                                i.smooth_scroll_delta.y
+                            } else {
+                                i.smooth_scroll_delta.y + i.smooth_scroll_delta.x
+                            }
+                        });
+                        leaf.scroll += scroll_delta * points_to_scroll_coefficient;
                     }
                 }
 
@@ -1171,7 +1435,14 @@ impl<Tab> DockArea<'_, Tab> {
 
             // Handle user input.
             if tabbar_response.hovered() || tab_hovered {
-                leaf.scroll += ui.input(|i| i.smooth_scroll_delta.y + i.smooth_scroll_delta.x);
+                let scroll_delta = ui.input(|i| {
+                    if position.is_vertical() {
+                        i.smooth_scroll_delta.y
+                    } else {
+                        i.smooth_scroll_delta.y + i.smooth_scroll_delta.x
+                    }
+                });
+                leaf.scroll += scroll_delta;
             }
         }
 
@@ -1189,6 +1460,7 @@ impl<Tab> DockArea<'_, Tab> {
         tabbar_rect: Rect,
         fade: Option<(&Style, f32)>,
         collapsed: bool,
+        position: TabBarPosition,
     ) {
         let (body_rect, _body_response) =
             ui.allocate_exact_size(ui.available_size_before_wrap(), Sense::hover());
@@ -1255,10 +1527,21 @@ impl<Tab> DockArea<'_, Tab> {
                 // To avoid anti-aliasing lines when the stroke width is not divisible by two, we
                 // need to calculate the effective anti-aliased stroke width.
                 let effective_stroke_width = (tabs_style.tab_body.stroke.width / 2.0).ceil() * 2.0;
-                let tab_body_rect = Rect::from_min_max(
-                    ui.clip_rect().min - vec2(0.0, effective_stroke_width),
-                    ui.clip_rect().max,
-                );
+                let mut tab_body_rect = ui.clip_rect();
+                match position {
+                    TabBarPosition::Top => {
+                        tab_body_rect.set_top(tab_body_rect.top() - effective_stroke_width)
+                    }
+                    TabBarPosition::Bottom => {
+                        tab_body_rect.set_bottom(tab_body_rect.bottom() + effective_stroke_width)
+                    }
+                    TabBarPosition::Left => {
+                        tab_body_rect.set_left(tab_body_rect.left() - effective_stroke_width)
+                    }
+                    TabBarPosition::Right => {
+                        tab_body_rect.set_right(tab_body_rect.right() + effective_stroke_width)
+                    }
+                }
                 ui.painter().rect_stroke(
                     rect_stroke_box(tab_body_rect, tabs_style.tab_body.stroke.width),
                     tabs_style.tab_body.corner_radius,

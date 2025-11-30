@@ -12,7 +12,7 @@ use egui::{
 use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{
     AllowedSplits, DockArea, DockState, NodeIndex, OverlayType, Style, SurfaceIndex,
-    TabInteractionStyle, TabViewer,
+    TabBarPosition, TabInteractionStyle, TabViewer,
 };
 
 /// Adds a widget with a label next to it, can be given an extra parameter in order to show a hover text
@@ -70,6 +70,7 @@ struct MyContext {
     pub style: Option<Style>,
     open_tabs: HashSet<String>,
 
+    tab_bar_position: TabBarPosition,
     show_close_buttons: bool,
     show_add_buttons: bool,
     draggable_tabs: bool,
@@ -270,6 +271,22 @@ impl MyContext {
                 ui.add(Slider::new(&mut style.tab_bar.height, 20.0..=50.0));
                 ui.label("Tab bar height");
             });
+            ComboBox::new("tab_bar_position", "Tab bar position")
+                .selected_text(format!("{:?}", style.tab_bar.position))
+                .show_ui(ui, |ui| {
+                    for position in [
+                        TabBarPosition::Top,
+                        TabBarPosition::Bottom,
+                        TabBarPosition::Left,
+                        TabBarPosition::Right,
+                    ] {
+                        ui.selectable_value(
+                            &mut style.tab_bar.position,
+                            position,
+                            format!("{position:?}"),
+                        );
+                    }
+                });
 
             ComboBox::new("add_button_align", "Add button align")
                 .selected_text(format!("{:?}", style.buttons.add_tab_align))
@@ -526,6 +543,7 @@ impl MyContext {
 
 impl Default for MyApp {
     fn default() -> Self {
+        let tab_bar_position = parse_tab_bar_position(std::env::args());
         let mut dock_state =
             DockState::new(vec!["Simple Demo".to_owned(), "Style Editor".to_owned()]);
         "Undock".clone_into(&mut dock_state.translations.tab_context_menu.eject_button);
@@ -559,6 +577,7 @@ impl Default for MyApp {
             style: None,
             open_tabs,
 
+            tab_bar_position,
             show_leaf_close_all: true,
             show_leaf_collapse: true,
             show_secondary_button_hint: true,
@@ -608,11 +627,16 @@ impl eframe::App for MyApp {
             // to set inner margins to 0.
             .frame(Frame::central_panel(&ctx.style()).inner_margin(0.))
             .show(ctx, |ui| {
-                let style = self
-                    .context
-                    .style
-                    .get_or_insert(Style::from_egui(ui.style()))
-                    .clone();
+        let style = self
+            .context
+            .style
+            .get_or_insert_with(|| {
+                let mut style = Style::from_egui(ui.style());
+                style.tab_bar.position = self.context.tab_bar_position;
+                style
+            });
+        self.context.tab_bar_position = style.tab_bar.position;
+        let style = style.clone();
 
                 DockArea::new(&mut self.tree)
                     .style(style)
@@ -636,4 +660,18 @@ fn corner_radius_ui(ui: &mut Ui, corner_radius: &mut CornerRadius) {
     labeled_widget!(ui, Slider::new(&mut corner_radius.ne, 0..=15), "North-East");
     labeled_widget!(ui, Slider::new(&mut corner_radius.sw, 0..=15), "South-West");
     labeled_widget!(ui, Slider::new(&mut corner_radius.se, 0..=15), "South-East");
+}
+
+fn parse_tab_bar_position(args: impl IntoIterator<Item = String>) -> TabBarPosition {
+    for arg in args.into_iter().skip(1) {
+        if let Some(value) = arg.strip_prefix("--tab-pos=") {
+            return match value.to_ascii_lowercase().as_str() {
+                "bottom" => TabBarPosition::Bottom,
+                "left" => TabBarPosition::Left,
+                "right" => TabBarPosition::Right,
+                _ => TabBarPosition::Top,
+            };
+        }
+    }
+    TabBarPosition::Top
 }

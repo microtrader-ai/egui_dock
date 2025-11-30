@@ -9,6 +9,29 @@ pub enum TabAddAlign {
     Right,
 }
 
+/// Position of the tab bar relative to the tab contents.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[allow(missing_docs)]
+pub enum TabBarPosition {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+impl TabBarPosition {
+    /// Returns `true` if the tab bar runs vertically (left/right).
+    pub const fn is_vertical(self) -> bool {
+        matches!(self, Self::Left | Self::Right)
+    }
+
+    /// Returns `true` if the tab bar runs horizontally (top/bottom).
+    pub const fn is_horizontal(self) -> bool {
+        !self.is_vertical()
+    }
+}
+
 /// Lets you change how tabs and the [`DockArea`](crate::DockArea) should look and feel.
 /// [`Style`] is divided into several, more specialized structs that handle individual
 /// elements of the UI.
@@ -181,6 +204,9 @@ pub struct TabBarStyle {
     /// Whether tab titles expand to fill the width of their tab bars.
     /// By `Default` it's `false`.
     pub fill_tab_bar: bool,
+
+    /// Location of the tab bar relative to the tab content area. By `Default` it's [`TabBarPosition::Top`].
+    pub position: TabBarPosition,
 }
 
 /// Specifies the look and feel of an individual tab.
@@ -420,6 +446,7 @@ impl Default for TabBarStyle {
             corner_radius: CornerRadius::default(),
             hline_color: Color32::BLACK,
             fill_tab_bar: false,
+            position: TabBarPosition::Top,
         }
     }
 }
