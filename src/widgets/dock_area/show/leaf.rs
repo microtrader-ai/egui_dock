@@ -35,9 +35,18 @@ impl<Tab> DockArea<'_, Tab> {
         let rect = self.dock_state[surface_index][node_index]
             .rect()
             .expect("This node must be a leaf");
-        let position = fade_style
+        let default_position = fade_style
             .map(|(style, _)| style.tab_bar.position)
             .unwrap_or_else(|| self.style.as_ref().unwrap().tab_bar.position);
+        let position = {
+            let leaf = self.dock_state[surface_index][node_index]
+                .get_leaf_mut()
+                .expect("This node must be a leaf");
+            leaf.tabs
+                .get_mut(0)
+                .and_then(|tab| tab_viewer.tab_bar_position(tab))
+                .unwrap_or(default_position)
+        };
         let layout = match position {
             TabBarPosition::Top => Layout::top_down_justified(Align::Min),
             TabBarPosition::Bottom => Layout::bottom_up(Align::Min),
@@ -1249,7 +1258,11 @@ impl<Tab> DockArea<'_, Tab> {
             text_rect.set_height(text_rect.height() - close_button_size);
             let pos_center = text_rect.shrink2(vec2(y_spacing, y_spacing)).center();
             let pos = pos_center - galley.rect.center().to_vec2();
-            let angle = FRAC_PI_2;
+            let angle = match position {
+                TabBarPosition::Left => -FRAC_PI_2,
+                TabBarPosition::Right => FRAC_PI_2,
+                _ => 0.0,
+            };
             let text_shape = TextShape::new(pos, galley.clone(), tab_style.text_color)
                 .with_override_text_color(tab_style.text_color)
                 .with_angle_and_anchor(angle, Align2::CENTER_CENTER);
