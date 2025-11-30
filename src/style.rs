@@ -551,8 +551,10 @@ impl Default for LeafHighlighting {
 impl Style {
     pub(crate) const TAB_ADD_BUTTON_SIZE: f32 = 24.0;
     pub(crate) const TAB_ADD_PLUS_SIZE: f32 = 12.0;
-    pub(crate) const TAB_CLOSE_BUTTON_SIZE: f32 = 24.0;
-    pub(crate) const TAB_CLOSE_X_SIZE: f32 = 9.0;
+    pub(crate) const TAB_CLOSE_BUTTON_SIZE: f32 = 18.0;
+    pub(crate) const TAB_CLOSE_X_SIZE: f32 = 8.0;
+    pub(crate) const TAB_CLOSE_BUTTON_OFFSET: f32 = 7.0;
+    pub(crate) const TAB_BAR_EDGE_PADDING: f32 = 1.0;
     pub(crate) const TAB_CLOSE_ALL_BUTTON_SIZE: f32 = 24.0;
     pub(crate) const TAB_CLOSE_ALL_SIZE: f32 = 10.0;
     pub(crate) const TAB_COLLAPSE_BUTTON_SIZE: f32 = 24.0;

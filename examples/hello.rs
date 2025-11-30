@@ -143,7 +143,12 @@ impl TabViewer for MyContext {
     }
 
     fn is_closeable(&self, tab: &Self::Tab) -> bool {
-        ["Inspector", "Style Editor", "Simple Demo"].contains(&tab.as_str())
+        let name = tab.as_str();
+        name == "Inspector"
+            || name == "Style Editor"
+            || name == "Simple Demo"
+            || name == "Extremely Long Tab Name That Should Scroll"
+            || name.starts_with("Extra Tab ")
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
@@ -615,11 +620,30 @@ impl Default for MyApp {
             0.7,
             vec!["File Browser".to_owned(), "Asset Manager".to_owned()],
         );
+        // Add an extra long title tab to the right-top area to demonstrate clipping/scrolling
+        if let Some(leaf) = dock_state[SurfaceIndex::main()][right_top].get_leaf_mut() {
+            leaf.append_tab("Extremely Long Tab Name That Should Scroll".to_owned());
+            for i in 0..10 {
+                leaf.append_tab(format!("Extra Tab {i}"));
+            }
+        }
+        // Add extra tabs to bottom/right2 for scrollbar testing.
+        if let Some(leaf) = dock_state[SurfaceIndex::main()][bottom_node].get_leaf_mut() {
+            for i in 0..10 {
+                leaf.append_tab(format!("Bottom Extra {i}"));
+            }
+        }
 
         // Left column: split horizontally into two leaves
-        let [_left_top, _left_bottom] = dock_state
+        let [_left_top, left_bottom] = dock_state
             .main_surface_mut()
             .split_below(left_root, 0.5, vec!["Hierarchy".to_owned()]);
+        // Add extra tabs to left_bottom for scrollbar testing.
+        if let Some(leaf) = dock_state[SurfaceIndex::main()][left_bottom].get_leaf_mut() {
+            for i in 0..10 {
+                leaf.append_tab(format!("Left Bottom Extra {i}"));
+            }
+        }
 
         let mut open_tabs = HashSet::new();
 
