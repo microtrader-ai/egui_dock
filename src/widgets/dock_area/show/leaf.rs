@@ -650,7 +650,11 @@ impl<Tab> DockArea<'_, Tab> {
                 let marker_px = 5.0 * tabs_ui.ctx().pixels_per_point().recip();
                 let marker_offset = marker_px * 0.5;
                 let border_color = style.tab_bar.hline_color;
-                let marker_color = Color32::from_rgb(68, 114, 234);
+                let marker_color = if focused.is_some_and(|f| f == (surface_index, node_index)) {
+                    Color32::from_rgb(68, 114, 234)
+                } else {
+                    style.tab_bar.hline_color
+                };
                 let y0 = response.rect.top() + marker_px;
                 let y1 = response.rect.bottom() - marker_px;
                 let x0 = response.rect.left() + marker_px;
@@ -693,7 +697,7 @@ impl<Tab> DockArea<'_, Tab> {
                     }
                    TabBarPosition::Left => {
                         indicator_painter.vline(
-                            response.rect.right() - marker_offset*6.0,
+                            response.rect.right() - marker_offset*3.0,
                             y0..=y1,
                             (marker_px, marker_color),
                         );
