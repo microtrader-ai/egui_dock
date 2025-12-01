@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 
 use eframe::NativeOptions;
+use egui::Color32;
 use egui::{
     color_picker::{color_edit_button_srgba, Alpha},
     vec2, CentralPanel, ComboBox, CornerRadius, Frame, Slider, TopBottomPanel, Ui, ViewportBuilder,
@@ -752,6 +753,9 @@ impl eframe::App for MyApp {
         style.tab_bar.position = self.context.tab_bar_position;
         // 右1/右2 纵向分隔最小保留 5px
         style.separator.extra = 5.0;
+        style.separator.color_hovered = Color32::from_rgb(52,118,207);
+        style.separator.color_dragged = Color32::from_rgb(52,118,207);
+        style.separator.width = 2.0;
         // 水平分割最多 50%，垂直不限制
         style.separator.max_fraction = Some(vec2(0.5, 1.0));
         style
