@@ -90,6 +90,7 @@ struct MyContext {
     show_secondary_button_hint: bool,
     secondary_button_on_modifier: bool,
     secondary_button_context_menu: bool,
+    next_tab_id: usize,
 }
 
 struct MyApp {
@@ -121,11 +122,22 @@ impl TabViewer for MyContext {
     }
 
     fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
-        match tab.as_str() {
+        let name = tab.as_str();
+        match name {
             "Simple Demo" => self.simple_demo(ui),
             "Style Editor" => self.style_editor(ui),
             _ => {
-                ui.label(tab.as_str());
+                // Display different content based on tab type
+                if name.starts_with("Regular Tab") {
+                    ui.label(format!("Content of {}. This is a regular tab.", name));
+                } else if name.starts_with("Fancy Tab") {
+                    ui.label(egui::RichText::new(format!("Content of {}. This tab is fancy!", name))
+                        .italics()
+                        .size(20.0)
+                        .color(egui::Color32::from_rgb(255, 128, 64)));
+                } else {
+                    ui.label(name);
+                }
             }
         }
     }
@@ -153,6 +165,10 @@ impl TabViewer for MyContext {
             || name == "Simple Demo"
             || name == "Extremely Long Tab Name That Should Scroll"
             || name.starts_with("Extra Tab ")
+            || name.starts_with("New Tab ")
+            || name.starts_with("Regular Tab ")
+            || name.starts_with("Fancy Tab ")
+            || name.starts_with("Inspector ")
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
@@ -692,6 +708,7 @@ impl Default for MyApp {
             draggable_tabs: true,
             show_tab_name_on_hover: false,
             allowed_splits: AllowedSplits::default(),
+            next_tab_id: 0,
         };
 
         Self {
@@ -808,16 +825,84 @@ impl eframe::App for MyApp {
                         let label = titles.get(tab.0).map(|s| s.as_str()).unwrap_or_default();
                         ui.horizontal(|ui| {
                             if label == "Simple Demo" {
-                                let _ = ui.small_button("+");
-                                let _ = ui.small_button("-");
+                                let add_response = ui.small_button("+");
+                                // Show popup menu when + button is clicked
+                                let popup_id = ui.id().with("custom_add_popup");
+                                if add_response.clicked() {
+                                    ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+                                }
+                                egui::popup_below_widget(ui, popup_id, &add_response, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+                                    ui.set_min_width(120.0);
+                                    ui.style_mut().visuals.button_frame = false;
+
+                                    if ui.button("Regular Tab").clicked() {
+                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Regular"))));
+                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                    }
+
+                                    if ui.button("Fancy Tab").clicked() {
+                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Fancy"))));
+                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                    }
+
+                                    if ui.button("Inspector Tab").clicked() {
+                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Inspector"))));
+                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                    }
+                                });
+
+                                if ui.small_button("-").clicked() {
+                                    // Handle remove action if needed
+                                }
                             } else {
-                                let _ = ui.small_button("+");
+                                let add_response = ui.small_button("+");
+                                let popup_id = ui.id().with("custom_add_popup");
+                                if add_response.clicked() {
+                                    ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+                                }
+                                egui::popup_below_widget(ui, popup_id, &add_response, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+                                    ui.set_min_width(120.0);
+                                    ui.style_mut().visuals.button_frame = false;
+
+                                    if ui.button("Regular Tab").clicked() {
+                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Regular"))));
+                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                    }
+
+                                    if ui.button("Fancy Tab").clicked() {
+                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Fancy"))));
+                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                    }
+
+                                    if ui.button("Inspector Tab").clicked() {
+                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Inspector"))));
+                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                    }
+                                });
                             }
                         });
                     }
                 }
             })
             .show_inside(ui, &mut self.context);
+
+        // Handle add tab request from tail_content button
+        if let Some(Some((surface, node, tab_type))) = ctx.data_mut(|d| d.remove_temp::<Option<(SurfaceIndex, NodeIndex, &str)>>(egui::Id::new("add_tab_request"))) {
+            if surface == SurfaceIndex::main() && node == self.context.right_top {
+                // Add a new tab based on type
+                self.context.next_tab_id += 1;
+                let new_tab = match tab_type {
+                    "Regular" => format!("Regular Tab {}", self.context.next_tab_id),
+                    "Fancy" => format!("Fancy Tab {}", self.context.next_tab_id),
+                    "Inspector" => format!("Inspector {}", self.context.next_tab_id),
+                    _ => format!("New Tab {}", self.context.next_tab_id),
+                };
+                self.context.open_tabs.insert(new_tab.clone());
+                if let Some(leaf) = self.tree[surface][node].get_leaf_mut() {
+                    leaf.append_tab(new_tab);
+                }
+            }
+        }
     });
     }
 }
