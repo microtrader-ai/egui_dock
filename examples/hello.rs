@@ -81,7 +81,6 @@ struct MyContext {
     bottom_root: NodeIndex,
     tab_bar_position: TabBarPosition,
     show_close_buttons: bool,
-    show_add_buttons: bool,
     draggable_tabs: bool,
     show_tab_name_on_hover: bool,
     allowed_splits: AllowedSplits,
@@ -239,7 +238,6 @@ impl MyContext {
 
         ui.collapsing("DockArea Options", |ui| {
             ui.checkbox(&mut self.show_close_buttons, "Show close buttons");
-            ui.checkbox(&mut self.show_add_buttons, "Show add buttons");
             ui.checkbox(&mut self.draggable_tabs, "Draggable tabs");
             ui.checkbox(&mut self.show_tab_name_on_hover, "Show tab name on hover");
             ui.checkbox(
@@ -704,7 +702,6 @@ impl Default for MyApp {
             secondary_button_on_modifier: true,
             secondary_button_context_menu: true,
             show_close_buttons: true,
-            show_add_buttons: false,
             draggable_tabs: true,
             show_tab_name_on_hover: false,
             allowed_splits: AllowedSplits::default(),
@@ -793,7 +790,6 @@ impl eframe::App for MyApp {
         DockArea::new(&mut self.tree)
             .style(style)
             .show_close_buttons(self.context.show_close_buttons)
-            .show_add_buttons(self.context.show_add_buttons)
             .draggable_tabs(self.context.draggable_tabs)
             .show_tab_name_on_hover(self.context.show_tab_name_on_hover)
             .allowed_splits(self.context.allowed_splits)
