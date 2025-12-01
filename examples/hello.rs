@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use eframe::NativeOptions;
 use egui::Color32;
@@ -749,19 +750,26 @@ impl eframe::App for MyApp {
             .context
             .style
             .get_or_insert_with(|| {
-        let mut style = Style::from_egui(ui.style());
-        style.tab_bar.position = self.context.tab_bar_position;
-        // 右1/右2 纵向分隔最小保留 5px
-        style.separator.extra = 5.0;
-        style.separator.color_hovered = Color32::from_rgb(52,118,207);
-        style.separator.color_dragged = Color32::from_rgb(52,118,207);
-        style.separator.width = 2.0;
-        // 水平分割最多 50%，垂直不限制
-        style.separator.max_fraction = Some(vec2(0.5, 1.0));
-        style
-    });
+                let mut style = Style::from_egui(ui.style());
+                style.tab_bar.position = self.context.tab_bar_position;
+                // 右1/右2 纵向分隔最小保留 5px
+                style.separator.extra = 5.0;
+                style.separator.color_hovered = Color32::from_rgb(52,118,207);
+                style.separator.color_dragged = Color32::from_rgb(52,118,207);
+                style.separator.width = 2.0;
+                // 右1 尾部空白 25px
+                style.tab_bar.tail_padding = 25.0;
+                // 水平分割最多 50%，垂直不限制
+                style.separator.max_fraction = Some(vec2(0.5, 1.0));
+                style
+            });
         self.context.tab_bar_position = style.tab_bar.position;
         let style = style.clone();
+        let tail_target = self.context.right_top;
+        let tail_titles: Arc<Vec<String>> = self.tree[SurfaceIndex::main()][tail_target]
+            .get_leaf()
+            .map(|leaf| Arc::new(leaf.tabs.clone()))
+            .unwrap_or_else(|| Arc::new(Vec::new()));
 
         DockArea::new(&mut self.tree)
             .style(style)
@@ -776,6 +784,37 @@ impl eframe::App for MyApp {
             .show_secondary_button_hint(self.context.show_secondary_button_hint)
             .secondary_button_on_modifier(self.context.secondary_button_on_modifier)
             .secondary_button_context_menu(self.context.secondary_button_context_menu)
+            .tab_bar_tail_padding({
+                let titles = tail_titles.clone();
+                move |surface, node, tab| {
+                    if surface == SurfaceIndex::main() && node == tail_target {
+                        if let Some(current) = titles.get(tab.0) {
+                            if current == "Simple Demo" {
+                                return 60.0;
+                            }
+                        }
+                        40.0
+                    } else {
+                        0.0
+                    }
+                }
+            })
+            .tab_bar_tail_content({
+                let titles = tail_titles.clone();
+                move |ui, surface, node, tab| {
+                    if surface == SurfaceIndex::main() && node == tail_target {
+                        let label = titles.get(tab.0).map(|s| s.as_str()).unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            if label == "Simple Demo" {
+                                ui.small_button("+");
+                                ui.small_button("-");
+                            } else {
+                                ui.small_button("+");
+                            }
+                        });
+                    }
+                }
+            })
             .show_inside(ui, &mut self.context);
     });
     }

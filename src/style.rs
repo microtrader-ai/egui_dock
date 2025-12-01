@@ -194,6 +194,9 @@ pub struct TabBarStyle {
     /// Height of the tab bar. By `Default` it's `24.0`.
     pub height: f32,
 
+    /// Reserved padding at the tail (after the last tab) in points.
+    pub tail_padding: f32,
+
     /// Inner margin of tab bar. By `Default` it's `Margin::ZERO`.
     pub inner_margin: Margin,
 
@@ -448,6 +451,7 @@ impl Default for TabBarStyle {
         Self {
             bg_fill: Color32::WHITE,
             height: 24.0,
+            tail_padding: 1.0,
             inner_margin: Margin::ZERO,
             show_scroll_bar_on_overflow: true,
             corner_radius: CornerRadius::default(),

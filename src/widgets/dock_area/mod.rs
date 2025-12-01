@@ -13,7 +13,7 @@ use crate::{dock_state::DockState, NodeIndex, Style, SurfaceIndex, TabIndex};
 pub use allowed_splits::AllowedSplits;
 use tab_removal::TabRemoval;
 
-use egui::{emath::*, Id, Modifiers};
+use egui::{emath::*, Id, Modifiers, Ui};
 
 /// Displays a [`DockState`] in `egui`.
 pub struct DockArea<'tree, Tab> {
@@ -36,6 +36,8 @@ pub struct DockArea<'tree, Tab> {
     secondary_button_context_menu: bool,
     allowed_splits: AllowedSplits,
     window_bounds: Option<Rect>,
+    tab_bar_tail_content: Option<Box<dyn FnMut(&mut Ui, SurfaceIndex, NodeIndex, TabIndex)>>,
+    tab_bar_tail_padding: Option<Box<dyn FnMut(SurfaceIndex, NodeIndex, TabIndex) -> f32>>,
 
     to_remove: Vec<TabRemoval>,
     to_detach: Vec<(SurfaceIndex, NodeIndex, TabIndex)>,
@@ -72,6 +74,8 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             secondary_button_modifiers: Modifiers::SHIFT,
             secondary_button_on_modifier: true,
             secondary_button_context_menu: true,
+            tab_bar_tail_content: None,
+            tab_bar_tail_padding: None,
         }
     }
 
@@ -114,6 +118,24 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     /// By default it's `true`.
     pub fn tab_context_menus(mut self, tab_context_menus: bool) -> Self {
         self.tab_context_menus = tab_context_menus;
+        self
+    }
+
+    /// Set a custom painter for the tab bar tail (the reserved `tail_padding` area) for active tabs.
+    pub fn tab_bar_tail_content(
+        mut self,
+        tail_content: impl FnMut(&mut Ui, SurfaceIndex, NodeIndex, TabIndex) + 'static,
+    ) -> Self {
+        self.tab_bar_tail_content = Some(Box::new(tail_content));
+        self
+    }
+
+    /// Provide per-active-tab tail padding (in points). Return 0.0 for no tail padding.
+    pub fn tab_bar_tail_padding(
+        mut self,
+        tail_padding: impl FnMut(SurfaceIndex, NodeIndex, TabIndex) -> f32 + 'static,
+    ) -> Self {
+        self.tab_bar_tail_padding = Some(Box::new(tail_padding));
         self
     }
 
