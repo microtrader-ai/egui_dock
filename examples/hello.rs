@@ -74,6 +74,7 @@ struct MyContext {
     tab_positions: HashMap<String, TabBarPosition>,
     node_positions: HashMap<NodeIndex, TabBarPosition>,
     left_root: NodeIndex,
+    right_top: NodeIndex,
     bottom_root: NodeIndex,
     tab_bar_position: TabBarPosition,
     show_close_buttons: bool,
@@ -185,8 +186,9 @@ impl TabViewer for MyContext {
     }
 
     fn allow_collapse(&self, _surface_index: SurfaceIndex, node_index: NodeIndex) -> bool {
-        // 仅右 2 子树显示折叠按钮
+        // 右 1、右 2 都显示折叠按钮
         Self::is_descendant(node_index, self.bottom_root)
+            || Self::is_descendant(node_index, self.right_top)
     }
 
 }
@@ -673,6 +675,7 @@ impl Default for MyApp {
             tab_positions,
             node_positions,
             left_root,
+            right_top,
             bottom_root: bottom_node,
             tab_bar_position,
             show_leaf_close_all: true,

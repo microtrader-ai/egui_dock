@@ -146,6 +146,8 @@ impl<Tab> DockArea<'_, Tab> {
         );
 
         let tabbar_outer_rect = tabbar_outer_rect - style.tab_bar.inner_margin;
+        let px = ui.ctx().pixels_per_point().recip();
+        let button_padding = 2.0 * px;
 
         let mut available_primary = if is_vertical {
             tabbar_outer_rect.height()
@@ -163,14 +165,10 @@ impl<Tab> DockArea<'_, Tab> {
             available_primary -= Style::TAB_ADD_BUTTON_SIZE;
         }
 
-        if self.show_leaf_close_all_buttons {
-            available_primary -= Style::TAB_CLOSE_ALL_BUTTON_SIZE;
-        }
-
         let show_collapse_button = self.show_leaf_collapse_buttons && collapse_allowed;
 
         if show_collapse_button {
-            available_primary -= Style::TAB_COLLAPSE_BUTTON_SIZE;
+            available_primary -= Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding;
         }
 
         let (actual_primary, tab_hovered) = {
@@ -180,9 +178,9 @@ impl<Tab> DockArea<'_, Tab> {
 
             let collapse_offset = if show_collapse_button {
                 if is_vertical {
-                    vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE)
+                    vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding)
                 } else {
-                    vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, 0.0)
+                    vec2(Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding, 0.0)
                 }
             } else {
                 Vec2::ZERO
@@ -215,12 +213,14 @@ impl<Tab> DockArea<'_, Tab> {
             if is_vertical {
                 clip_rect.set_height(available_primary);
                 if show_collapse_button {
-                    clip_rect = clip_rect.translate(vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE));
+                    clip_rect =
+                        clip_rect.translate(vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding));
                 }
             } else {
                 clip_rect.set_width(available_primary);
                 if show_collapse_button {
-                    clip_rect = clip_rect.translate(vec2(Style::TAB_COLLAPSE_BUTTON_SIZE, 0.0));
+                    clip_rect =
+                        clip_rect.translate(vec2(Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding, 0.0));
                 }
             }
             tabs_ui.set_clip_rect(clip_rect);
@@ -292,10 +292,6 @@ impl<Tab> DockArea<'_, Tab> {
                 let offset = match style.buttons.add_tab_align {
                     TabAddAlign::Left => remaining_space,
                     TabAddAlign::Right => 0.0,
-                } + if self.show_leaf_close_all_buttons {
-                    Style::TAB_CLOSE_ALL_BUTTON_SIZE
-                } else {
-                    0.0
                 };
                 self.tab_plus(
                     ui,
@@ -307,34 +303,6 @@ impl<Tab> DockArea<'_, Tab> {
                     fade_style,
                     position,
                 );
-            }
-
-            if self.show_leaf_close_all_buttons {
-                // Current leaf contains non-closable tabs.
-                let disabled = self.dock_state[surface_index][node_index]
-                    .get_leaf_mut()
-                    .map(|leaf| !leaf.tabs.iter_mut().all(|tab| tab_viewer.is_closeable(tab)))
-                    .expect("This node must be a leaf");
-
-                // Current window contains non-closable tabs.
-                let close_window_disabled = disabled
-                    || !self.dock_state[surface_index].iter_mut().all(|node| {
-                        node.get_leaf_mut().is_none_or(|leaf| {
-                            leaf.tabs.iter_mut().all(|tab| tab_viewer.is_closeable(tab))
-                        })
-                    });
-
-                self.tab_close_all(
-                    ui,
-                    surface_index,
-                    node_index,
-                    tabbar_outer_rect,
-                    fade_style,
-                    disabled,
-                    close_window_disabled,
-                    position,
-                    show_collapse_button,
-                )
             }
 
             if show_collapse_button {
@@ -931,175 +899,6 @@ impl<Tab> DockArea<'_, Tab> {
     }
 
     /// Draws the close all button.
-    #[allow(clippy::too_many_arguments)]
-    #[allow(unused_assignments)]
-    fn tab_close_all(
-        &mut self,
-        ui: &mut Ui,
-        surface_index: SurfaceIndex,
-        node_index: NodeIndex,
-        tabbar_outer_rect: Rect,
-        fade_style: Option<&Style>,
-        disabled: bool,
-        close_window_disabled: bool,
-        position: TabBarPosition,
-        show_collapse_button: bool,
-    ) {
-        let rect = match position {
-            TabBarPosition::Top | TabBarPosition::Bottom => {
-                let offset = if show_collapse_button {
-                    Style::TAB_COLLAPSE_BUTTON_SIZE
-                } else {
-                    0.0
-                };
-                Rect::from_min_size(
-                    pos2(
-                        tabbar_outer_rect.right() - Style::TAB_CLOSE_ALL_BUTTON_SIZE - offset,
-                        tabbar_outer_rect.top(),
-                    ),
-                    vec2(Style::TAB_CLOSE_ALL_BUTTON_SIZE, tabbar_outer_rect.height()),
-                )
-            }
-            TabBarPosition::Left | TabBarPosition::Right => {
-                let offset = if show_collapse_button {
-                    Style::TAB_COLLAPSE_BUTTON_SIZE
-                } else {
-                    0.0
-                };
-                Rect::from_min_size(
-                    pos2(
-                        tabbar_outer_rect.left(),
-                        tabbar_outer_rect.bottom() - Style::TAB_CLOSE_ALL_BUTTON_SIZE - offset,
-                    ),
-                    vec2(tabbar_outer_rect.width(), Style::TAB_CLOSE_ALL_BUTTON_SIZE),
-                )
-            }
-        };
-
-        let ui = &mut ui.new_child(
-            UiBuilder::new()
-                .max_rect(rect)
-                .layout(Layout::left_to_right(Align::Center))
-                .id_salt((node_index, "tab_close_all")),
-        );
-
-        let (rect, mut response) = ui.allocate_exact_size(ui.available_size(), Sense::click());
-
-        let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
-
-        // Whether we're on "secondary button mode" due to modifier keys
-        let on_secondary_button = self.is_on_secondary_button(surface_index, ui, &response);
-
-        let mut stroke_color = if disabled {
-            style.buttons.close_all_tabs_disabled_color
-        } else if response.hovered() || response.has_focus() {
-            if !(close_window_disabled && on_secondary_button) {
-                ui.painter().rect_filled(
-                    rect,
-                    CornerRadius::ZERO,
-                    style.buttons.close_all_tabs_bg_fill,
-                );
-            }
-            style.buttons.close_all_tabs_active_color
-        } else {
-            style.buttons.close_all_tabs_color
-        };
-
-        let mut close_all_rect = rect;
-
-        rect_set_size_centered(&mut close_all_rect, Vec2::splat(Style::TAB_CLOSE_ALL_SIZE));
-
-        if !disabled {
-            response = response.on_hover_cursor(CursorIcon::PointingHand);
-        }
-
-        if on_secondary_button {
-            // Close the entire window
-            if close_window_disabled {
-                stroke_color = style.buttons.close_all_tabs_disabled_color;
-                response = response
-                    .on_hover_cursor(CursorIcon::NotAllowed)
-                    .on_hover_text(
-                        self.dock_state
-                            .translations
-                            .leaf
-                            .close_all_button_disabled_tooltip
-                            .as_str(),
-                    );
-            }
-            Self::draw_close_window_symbol(ui, stroke_color, close_all_rect);
-        } else {
-            // Close all tabs in this leaf
-            if !disabled {
-                if !surface_index.is_main() && self.secondary_button_context_menu {
-                    response.context_menu(|ui| {
-                        ui.add_enabled_ui(!close_window_disabled, |ui| {
-                            if ui
-                                .button(&self.dock_state.translations.leaf.close_all_button)
-                                .on_disabled_hover_text(
-                                    self.dock_state
-                                        .translations
-                                        .leaf
-                                        .close_all_button_disabled_tooltip
-                                        .as_str(),
-                                )
-                                .clicked()
-                            {
-                                self.to_remove.push(TabRemoval::Window(surface_index));
-                            }
-                        });
-                    });
-                }
-            } else {
-                response = response
-                    .on_hover_cursor(CursorIcon::NotAllowed)
-                    .on_hover_text(
-                        self.dock_state
-                            .translations
-                            .leaf
-                            .close_button_disabled_tooltip
-                            .as_str(),
-                    );
-            }
-
-            if response.clicked() {
-                if on_secondary_button {
-                    if !close_window_disabled {
-                        self.to_remove.push(TabRemoval::Window(surface_index));
-                    }
-                } else if !disabled {
-                    self.to_remove
-                        .push(TabRemoval::Node(surface_index, node_index));
-                }
-            }
-
-            ui.painter().line_segment(
-                [close_all_rect.left_top(), close_all_rect.right_bottom()],
-                Stroke::new(1.0, stroke_color),
-            );
-            ui.painter().line_segment(
-                [close_all_rect.right_top(), close_all_rect.left_bottom()],
-                Stroke::new(1.0, stroke_color),
-            );
-        }
-
-        // Draw button left border.
-        let stroke = Stroke::new(
-            ui.ctx().pixels_per_point().recip(),
-            style.buttons.close_all_tabs_border_color,
-        );
-        if position.is_vertical() {
-            ui.painter()
-                .hline(rect.x_range(), rect.top(), stroke.clone());
-        } else {
-            ui.painter().vline(rect.left(), rect.y_range(), stroke);
-        }
-
-        if !disabled && !on_secondary_button {
-            response = self.show_tooltip_hints(surface_index, response);
-        }
-    }
-
     /// Draws the collapse button.
     fn tab_collapse(
         &mut self,
