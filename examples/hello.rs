@@ -733,6 +733,10 @@ impl eframe::App for MyApp {
             .get_or_insert_with(|| {
                 let mut style = Style::from_egui(ui.style());
                 style.tab_bar.position = self.context.tab_bar_position;
+                // 右1/右2 纵向分隔最小保留 5px
+                style.separator.extra = 5.0;
+                // 水平分割最多 50%，垂直不限制
+                style.separator.max_fraction = Some(vec2(0.5, 1.0));
                 style
             });
         self.context.tab_bar_position = style.tab_bar.position;

@@ -168,6 +168,12 @@ pub struct SeparatorStyle {
     /// `bigger value > less allowed offset` for the current window size.
     pub extra: f32,
 
+    /// Optional maximum fraction (0..=1) the separator is allowed to reach.
+    /// x applies to left/right splits, y applies to top/bottom splits.
+    /// `None` means no additional cap besides the default min clamp.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub max_fraction: Option<egui::Vec2>,
+
     /// Idle color of the rectangle separator. By `Default` it's [`Color32::BLACK`].
     pub color_idle: Color32,
 
@@ -429,6 +435,7 @@ impl Default for SeparatorStyle {
             width: 1.0,
             extra_interact_width: 2.0,
             extra: 175.0,
+            max_fraction: None,
             color_idle: Color32::BLACK,
             color_hovered: Color32::GRAY,
             color_dragged: Color32::WHITE,

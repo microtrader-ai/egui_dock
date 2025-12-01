@@ -577,8 +577,17 @@ impl<Tab> DockArea<'_, Tab> {
                 // otherwise it may overlap on other separator / bodies when
                 // shrunk fast.
                 let range = rect.max.dim_point - rect.min.dim_point;
-                let min = (style.separator.extra / range).min(1.0);
-                let max = 1.0 - min;
+                let min_size = (style.tab_bar.height + style.separator.extra)
+                    .max(style.separator.width);
+                let min = (min_size / range).min(0.5);
+                let mut max = 1.0 - min;
+                if let Some(limit) = style.separator.max_fraction {
+                    let limit = paste! { limit.[<dim_point>] };
+                    if limit > 0.0 {
+                        max = max.min(limit.clamp(0.0, 1.0));
+                    }
+                }
+                let max = max.max(min);
                 let (min, max) = (min.min(max), max.max(min));
                 let delta = arrow_key_offset.unwrap_or(response.drag_delta()).dim_point;
                 split.fraction = (split.fraction + delta / range).clamp(min, max);
