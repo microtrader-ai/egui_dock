@@ -197,6 +197,10 @@ pub struct TabBarStyle {
     /// Reserved padding at the tail (after the last tab) in points.
     pub tail_padding: f32,
 
+    /// Automatically expand tail_padding to fill remaining space when tabs don't overflow.
+    /// By `Default` it's `false`.
+    pub auto_tail: bool,
+
     /// Inner margin of tab bar. By `Default` it's `Margin::ZERO`.
     pub inner_margin: Margin,
 
@@ -452,6 +456,7 @@ impl Default for TabBarStyle {
             bg_fill: Color32::WHITE,
             height: 24.0,
             tail_padding: 1.0,
+            auto_tail: false,
             inner_margin: Margin::ZERO,
             show_scroll_bar_on_overflow: true,
             corner_radius: CornerRadius::default(),

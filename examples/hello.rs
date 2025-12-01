@@ -760,6 +760,7 @@ impl eframe::App for MyApp {
                 // 右1 尾部空白 25px
                 style.tab_bar.tail_padding = 25.0;
                 style.tab_bar.auto_tail = true;
+                style.tab_bar.fill_tab_bar = false; // auto_tail 和 fill_tab_bar 互斥
                 // 水平分割最多 50%，垂直不限制
                 style.separator.max_fraction = Some(vec2(0.5, 1.0));
                 style

@@ -1,6 +1,6 @@
 use egui::{
     emath::TSTransform, epaint::TextShape, lerp, pos2, vec2, Align, Align2, Button, Color32,
-    CornerRadius, CursorIcon, Direction, Frame, Id, Key, LayerId, Layout, NumExt, Order, Popup,
+    CornerRadius, CursorIcon, Frame, Id, Key, LayerId, Layout, NumExt, Order, Popup,
     PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape, Stroke, StrokeKind, TextStyle,
     Ui, UiBuilder, Vec2, WidgetText,
 };
@@ -14,8 +14,7 @@ use crate::{
         state::State,
     },
     utils::{fade_visuals, rect_set_size_centered, rect_stroke_box},
-    DockArea, Node, NodeIndex, Style, SurfaceIndex, TabAddAlign, TabBarPosition, TabIndex,
-    TabStyle, TabViewer,
+    DockArea, Node, NodeIndex, Style, SurfaceIndex, TabBarPosition, TabIndex, TabStyle, TabViewer,
 };
 
 use crate::tab_viewer::OnCloseResponse;
@@ -165,36 +164,40 @@ impl<Tab> DockArea<'_, Tab> {
         let px = ui.ctx().pixels_per_point().recip();
         let button_padding = 2.0 * px;
 
-        let mut available_primary = if is_vertical {
+        let bar_len = if is_vertical {
             tabbar_outer_rect.height()
         } else {
             tabbar_outer_rect.width()
         };
-        let scroll_bar_width = available_primary;
-        if available_primary == 0.0 {
+        let scroll_bar_width = bar_len;
+        if bar_len == 0.0 {
             return tabbar_outer_rect;
         }
 
-        // Reserve space for the buttons at the ends of the tab bar.
-
-        if self.show_add_buttons {
-            available_primary -= Style::TAB_ADD_BUTTON_SIZE;
-        }
-
         let show_collapse_button = self.show_leaf_collapse_buttons && collapse_allowed;
-
-        if show_collapse_button {
-            available_primary -= Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding;
-        }
+        let collapse_space = if show_collapse_button {
+            Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding
+        } else {
+            0.0
+        };
+        let add_gap = if self.show_add_buttons { px } else { 0.0 };
+        let add_size = if self.show_add_buttons {
+            Style::TAB_ADD_BUTTON_SIZE
+        } else {
+            0.0
+        };
         let tail_padding_min = if let Some(provider) = self.tab_bar_tail_padding.as_deref_mut() {
             provider(surface_index, node_index, active_index)
         } else {
             style.tab_bar.tail_padding
         };
-        // Tail padding will be refined after tabs layout; start with the minimum.
-        available_primary = (available_primary - tail_padding_min).at_least(0.0);
 
-        let (tab_hovered, actual_primary) = {
+        // Length dedicated to tabs + tail (collapse button already removed).
+        let tab_tail_len = (bar_len - collapse_space).at_least(0.0);
+        // Inside that area we place: tabs (scrollable) + optional gap/+ button + tail padding.
+        let tabs_and_tail_len = (tab_tail_len - add_gap - add_size).at_least(0.0);
+
+        let (tab_hovered, actual_primary, tail_padding, tail_start, available_primary) = {
             let leaf = self.dock_state[surface_index][node_index]
                 .get_leaf_mut()
                 .expect("This node must be a leaf");
@@ -213,13 +216,13 @@ impl<Tab> DockArea<'_, Tab> {
             } else {
                 vec2(-leaf.scroll, 0.0)
             };
-            let tabbar_inner_rect = Rect::from_min_size(
-                tabbar_outer_rect.min + scroll_offset + collapse_offset,
-                vec2(
-                    (tabbar_outer_rect.width() - tail_padding_min).at_least(0.0),
-                    tabbar_outer_rect.height(),
-                ),
-            );
+            let tabs_origin = tabbar_outer_rect.min + collapse_offset + scroll_offset;
+            let tabs_size = if is_vertical {
+                vec2(tabbar_outer_rect.width(), tabs_and_tail_len)
+            } else {
+                vec2(tabs_and_tail_len, tabbar_outer_rect.height())
+            };
+            let tabbar_inner_rect = Rect::from_min_size(tabs_origin, tabs_size);
 
             let tabs_layout = if is_vertical {
                 Layout::top_down(Align::Min)
@@ -235,27 +238,21 @@ impl<Tab> DockArea<'_, Tab> {
             );
             tabs_ui.spacing_mut().item_spacing = Vec2::ZERO;
 
-            let mut clip_rect = tabbar_outer_rect;
-            if is_vertical {
-                clip_rect.set_height(available_primary);
-                if show_collapse_button {
-                    clip_rect =
-                        clip_rect.translate(vec2(0.0, Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding));
-                }
-            } else {
-                clip_rect.set_width(available_primary);
-                if show_collapse_button {
-                    clip_rect =
-                        clip_rect.translate(vec2(Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding, 0.0));
-                }
-            }
+            let mut clip_rect = Rect::from_min_size(
+                tabbar_outer_rect.min + collapse_offset,
+                tabs_size,
+            );
             tabs_ui.set_clip_rect(clip_rect);
 
             // Desired size for tabs in "expanded" mode.
-            let prefered_width = style
-                .tab_bar
-                .fill_tab_bar
-                .then_some(available_primary / (leaf.tabs.len() as f32));
+            // fill_tab_bar and auto_tail are mutually exclusive:
+            // - fill_tab_bar: tabs expand, tail_padding fixed
+            // - auto_tail: tail_padding expands, tabs use actual width
+            let prefered_width = if style.tab_bar.fill_tab_bar && !style.tab_bar.auto_tail {
+                Some(tabs_and_tail_len / (leaf.tabs.len() as f32).at_least(1.0))
+            } else {
+                None
+            };
 
             let (tab_hovered, actual_primary) = self.tabs(
                 tabs_ui,
@@ -270,147 +267,171 @@ impl<Tab> DockArea<'_, Tab> {
             );
 
             let tail_padding = {
-                let tabs_used = if is_vertical {
-                    tabs_ui.min_rect().height()
-                } else {
-                    tabs_ui.min_rect().width()
-                };
-                let bar_len = if is_vertical {
-                    clip_rect.height()
-                } else {
-                    clip_rect.width()
-                };
-                if style.tab_bar.auto_tail {
-                    (bar_len - tabs_used).at_least(tail_padding_min)
+                // tabs_and_tail_len = tabs + gap/+ + tail
+                let max_tabs_without_overflow =
+                    (tabs_and_tail_len - tail_padding_min).at_least(0.0);
+                if style.tab_bar.auto_tail && actual_primary <= max_tabs_without_overflow {
+                    (tabs_and_tail_len - actual_primary).at_least(tail_padding_min)
                 } else {
                     tail_padding_min
                 }
             };
-            // Update available_primary based on final tail padding to drive scrollbar range.
-            if style.tab_bar.auto_tail {
-                if is_vertical {
-                    available_primary = (clip_rect.height() - tail_padding).at_least(0.0);
-                } else {
-                    available_primary = (clip_rect.width() - tail_padding).at_least(0.0);
-                }
-            }
 
-            // Draw hline from tab end to edge of tab bar.
-            let px = ui.ctx().pixels_per_point().recip();
-            let style = match fade_style {
-                Some(style) => style.clone(),
-                None => self.style.as_ref().unwrap().clone(),
+            // Visible length for tabs after reserving tail padding.
+            let space_without_tail = (tabs_and_tail_len - tail_padding).at_least(0.0);
+            let visible_primary = if actual_primary <= space_without_tail {
+                actual_primary
+            } else {
+                space_without_tail
             };
 
-            match position {
-                TabBarPosition::Top => {
-                    let tail_end = (clip_rect.left() + clip_rect.width() - tail_padding)
-                        .max(clip_rect.left());
-                    ui.painter().hline(
-                        tabs_ui.min_rect().right().min(clip_rect.right())..=tail_end,
-                        tabbar_outer_rect.bottom() - px,
-                        (px, style.tab_bar.hline_color),
-                    );
+            if is_vertical {
+                clip_rect.set_height(visible_primary);
+            } else {
+                clip_rect.set_width(visible_primary);
+            }
+            tabs_ui.set_clip_rect(clip_rect);
+
+            let tail_start = match position {
+                TabBarPosition::Top | TabBarPosition::Bottom => {
+                    (tabbar_outer_rect.left() + collapse_space + visible_primary)
+                        .at_most(tabbar_outer_rect.right())
                 }
-                TabBarPosition::Bottom => {
-                    let tail_end = (clip_rect.left() + clip_rect.width() - tail_padding)
-                        .max(clip_rect.left());
-                    ui.painter().hline(
-                        tabs_ui.min_rect().right().min(clip_rect.right())..=tail_end,
-                        tabbar_outer_rect.top() + px,
-                        (px, style.tab_bar.hline_color),
-                    );
-                }
-                TabBarPosition::Left => {
-                    ui.painter().vline(
-                        tabbar_outer_rect.right() - px,
-                        tabs_ui.min_rect().bottom().min(clip_rect.bottom())
-                            ..=tabbar_outer_rect.bottom(),
-                        (px, style.tab_bar.hline_color),
-                    );
-                }
-                TabBarPosition::Right => {
-                    ui.painter().vline(
-                        tabbar_outer_rect.left() + px,
-                        tabs_ui.min_rect().bottom().min(clip_rect.bottom())
-                            ..=tabbar_outer_rect.bottom(),
-                        (px, style.tab_bar.hline_color),
-                    );
+                TabBarPosition::Left | TabBarPosition::Right => {
+                    (tabbar_outer_rect.top() + collapse_space + visible_primary)
+                        .at_most(tabbar_outer_rect.bottom())
                 }
             };
-
-            // Add button at the ends of the tab bar.
-            if self.show_add_buttons {
-                let remaining_space = if is_vertical {
-                    (clip_rect.height() - tabs_ui.min_rect().height()).at_least(0.0)
-                } else {
-                    (clip_rect.width() - tabs_ui.min_rect().width()).at_least(0.0)
-                };
-                let offset = match style.buttons.add_tab_align {
-                    TabAddAlign::Left => remaining_space,
-                    TabAddAlign::Right => 0.0,
-                };
-                self.tab_plus(
-                    ui,
-                    surface_index,
-                    node_index,
-                    tab_viewer,
-                    tabbar_outer_rect,
-                    offset,
-                    fade_style,
-                    position,
-                );
-            }
-
-            if show_collapse_button {
-                self.tab_collapse(
-                    ui,
-                    surface_index,
-                    node_index,
-                    tabbar_outer_rect,
-                    fade_style,
-                    collapsed,
-                    position,
-                    show_collapse_button,
-                )
-            }
-
-            // Custom tail content (reserved by tail_padding).
-            if tail_padding > 0.0 {
-                if let Some(tail_cb) = self.tab_bar_tail_content.as_deref_mut() {
-                    let tail_rect = match position {
-                        TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
-                            pos2(
-                                clip_rect.left() + clip_rect.width() - tail_padding,
-                                tabbar_outer_rect.top(),
-                            ),
-                            vec2(tail_padding, tabbar_outer_rect.height()),
-                        ),
-                        TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
-                            pos2(
-                                tabbar_outer_rect.left(),
-                                clip_rect.top() + clip_rect.height() - tail_padding,
-                            ),
-                            vec2(tabbar_outer_rect.width(), tail_padding),
-                        ),
-                    };
-                    let tail_ui = &mut ui.new_child(
-                        UiBuilder::new()
-                            .max_rect(tail_rect)
-                            .layout(Layout::centered_and_justified(Direction::LeftToRight))
-                            .id_salt((node_index, "tab_tail")),
-                    );
-                    // Paint background over tail to avoid tab overlap.
-                    ui.painter().rect_filled(tail_rect, CornerRadius::ZERO, style.tab_bar.bg_fill);
-                    tail_cb(tail_ui, surface_index, node_index, active_index);
-                }
-            }
 
             (
                 tab_hovered,
                 actual_primary,
+                tail_padding,
+                tail_start,
+                visible_primary,
             )
         };
+
+        // Draw hline from tab end to start of tail padding.
+        let style = match fade_style {
+            Some(style) => style.clone(),
+            None => self.style.as_ref().unwrap().clone(),
+        };
+
+        let tabs_start_primary = match position {
+            TabBarPosition::Top | TabBarPosition::Bottom => tabbar_outer_rect.left() + collapse_space,
+            TabBarPosition::Left | TabBarPosition::Right => tabbar_outer_rect.top() + collapse_space,
+        };
+        let tabs_end_primary = (tabs_start_primary + actual_primary).at_most(tail_start);
+        let line_start = tabs_end_primary.min(tail_start);
+        let line_end = tail_start.max(line_start);
+
+        match position {
+            TabBarPosition::Top => {
+                ui.painter().hline(
+                    line_start..=line_end,
+                    tabbar_outer_rect.bottom() - px,
+                    (px, style.tab_bar.hline_color),
+                );
+            }
+            TabBarPosition::Bottom => {
+                ui.painter().hline(
+                    line_start..=line_end,
+                    tabbar_outer_rect.top() + px,
+                    (px, style.tab_bar.hline_color),
+                );
+            }
+            TabBarPosition::Left => {
+                ui.painter().vline(
+                    tabbar_outer_rect.right() - px,
+                    line_start..=line_end,
+                    (px, style.tab_bar.hline_color),
+                );
+            }
+            TabBarPosition::Right => {
+                ui.painter().vline(
+                    tabbar_outer_rect.left() + px,
+                    line_start..=line_end,
+                    (px, style.tab_bar.hline_color),
+                );
+            }
+        };
+
+        // Add button placed just before tail padding (inside tab/tail area).
+        if self.show_add_buttons {
+            let plus_rect = match position {
+                TabBarPosition::Top | TabBarPosition::Bottom => {
+                    let plus_end = (tail_start - add_gap).at_least(tabbar_outer_rect.left());
+                    let plus_start = (plus_end - add_size).at_least(tabbar_outer_rect.left());
+                    Rect::from_min_size(
+                        pos2(plus_start, tabbar_outer_rect.top()),
+                        vec2(add_size, tabbar_outer_rect.height()),
+                    )
+                }
+                TabBarPosition::Left | TabBarPosition::Right => {
+                    let plus_end = (tail_start - add_gap).at_least(tabbar_outer_rect.top());
+                    let plus_start = (plus_end - add_size).at_least(tabbar_outer_rect.top());
+                    Rect::from_min_size(
+                        pos2(tabbar_outer_rect.left(), plus_start),
+                        vec2(tabbar_outer_rect.width(), add_size),
+                    )
+                }
+            };
+            self.tab_plus(
+                ui,
+                surface_index,
+                node_index,
+                tab_viewer,
+                plus_rect,
+                fade_style,
+                position,
+            );
+        }
+
+        if show_collapse_button {
+            self.tab_collapse(
+                ui,
+                surface_index,
+                node_index,
+                tabbar_outer_rect,
+                fade_style,
+                collapsed,
+                position,
+                show_collapse_button,
+            )
+        }
+
+        // Custom tail content (reserved by tail_padding).
+        if tail_padding > 0.0 {
+            if let Some(tail_cb) = self.tab_bar_tail_content.as_deref_mut() {
+                let tail_rect = match position {
+                    TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
+                        pos2(tail_start, tabbar_outer_rect.top()),
+                        vec2(tail_padding, tabbar_outer_rect.height()),
+                    ),
+                    TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
+                        pos2(tabbar_outer_rect.left(), tail_start),
+                        vec2(tabbar_outer_rect.width(), tail_padding),
+                    ),
+                };
+                let tail_ui = &mut ui.new_child(
+                    UiBuilder::new()
+                        .max_rect(tail_rect)
+                        .layout(match position {
+                            TabBarPosition::Top | TabBarPosition::Bottom => {
+                                Layout::left_to_right(Align::Center)
+                            }
+                            TabBarPosition::Left | TabBarPosition::Right => {
+                                Layout::top_down(Align::Center)
+                            }
+                        })
+                        .id_salt((node_index, "tab_tail")),
+                );
+                // Paint background over tail to avoid tab overlap.
+                ui.painter().rect_filled(tail_rect, CornerRadius::ZERO, style.tab_bar.bg_fill);
+                tail_cb(tail_ui, surface_index, node_index, active_index);
+            }
+        }
 
         let (scroll_ui_first, scroll_ui_last) = match position {
             TabBarPosition::Top | TabBarPosition::Left => (true, false),
@@ -912,27 +933,10 @@ impl<Tab> DockArea<'_, Tab> {
         surface_index: SurfaceIndex,
         node_index: NodeIndex,
         tab_viewer: &mut impl TabViewer<Tab = Tab>,
-        tabbar_outer_rect: Rect,
-        offset: f32,
+        rect: Rect,
         fade_style: Option<&Style>,
         position: TabBarPosition,
     ) {
-        let rect = match position {
-            TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
-                pos2(
-                    tabbar_outer_rect.right() - Style::TAB_ADD_BUTTON_SIZE - offset,
-                    tabbar_outer_rect.top(),
-                ),
-                vec2(Style::TAB_ADD_BUTTON_SIZE, tabbar_outer_rect.height()),
-            ),
-            TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
-                pos2(
-                    tabbar_outer_rect.left(),
-                    tabbar_outer_rect.bottom() - Style::TAB_ADD_BUTTON_SIZE - offset,
-                ),
-                vec2(tabbar_outer_rect.width(), Style::TAB_ADD_BUTTON_SIZE),
-            ),
-        };
 
         let ui = &mut ui.new_child(
             UiBuilder::new()
