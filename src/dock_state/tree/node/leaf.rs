@@ -23,6 +23,10 @@ pub struct LeafNode<Tab> {
 
     /// Whether the leaf is collapsed.
     pub collapsed: bool,
+
+    /// Whether the entire leaf (tab bar + body) is hidden.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub hidden: bool,
 }
 
 impl<Tab> LeafNode<Tab> {
@@ -35,6 +39,7 @@ impl<Tab> LeafNode<Tab> {
             active: TabIndex(0),
             scroll: 0.0,
             collapsed: false,
+            hidden: false,
         }
     }
 

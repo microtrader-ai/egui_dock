@@ -74,6 +74,7 @@ struct MyContext {
     tab_positions: HashMap<String, TabBarPosition>,
     node_positions: HashMap<NodeIndex, TabBarPosition>,
     left_root: NodeIndex,
+    left_bottom: NodeIndex,
     right_top: NodeIndex,
     bottom_root: NodeIndex,
     tab_bar_position: TabBarPosition,
@@ -675,6 +676,7 @@ impl Default for MyApp {
             tab_positions,
             node_positions,
             left_root,
+            left_bottom,
             right_top,
             bottom_root: bottom_node,
             tab_bar_position,
@@ -702,6 +704,21 @@ impl eframe::App for MyApp {
         TopBottomPanel::top("egui_dock::MenuBar").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("View", |ui| {
+                    let left2_visible = !self
+                        .tree
+                        .leaf_hidden((SurfaceIndex::main(), self.context.left_bottom))
+                        .unwrap_or(false);
+                    if ui
+                        .selectable_label(left2_visible, "Left2 Visible")
+                        .clicked()
+                    {
+                        self.tree.set_leaf_hidden(
+                            (SurfaceIndex::main(), self.context.left_bottom),
+                            left2_visible,
+                        );
+                        ui.close();
+                    }
+
                     // allow certain tabs to be toggled
                     for tab in &["File Browser", "Asset Manager"] {
                         if ui
@@ -731,14 +748,14 @@ impl eframe::App for MyApp {
             .context
             .style
             .get_or_insert_with(|| {
-                let mut style = Style::from_egui(ui.style());
-                style.tab_bar.position = self.context.tab_bar_position;
-                // 右1/右2 纵向分隔最小保留 5px
-                style.separator.extra = 5.0;
-                // 水平分割最多 50%，垂直不限制
-                style.separator.max_fraction = Some(vec2(0.5, 1.0));
-                style
-            });
+        let mut style = Style::from_egui(ui.style());
+        style.tab_bar.position = self.context.tab_bar_position;
+        // 右1/右2 纵向分隔最小保留 5px
+        style.separator.extra = 5.0;
+        // 水平分割最多 50%，垂直不限制
+        style.separator.max_fraction = Some(vec2(0.5, 1.0));
+        style
+    });
         self.context.tab_bar_position = style.tab_bar.position;
         let style = style.clone();
 

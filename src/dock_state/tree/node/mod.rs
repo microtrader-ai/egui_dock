@@ -111,7 +111,7 @@ impl<Tab> Node<Tab> {
     #[inline(always)]
     pub fn is_collapsed(&self) -> bool {
         match self {
-            Node::Leaf(leaf) => leaf.collapsed,
+            Node::Leaf(leaf) => leaf.collapsed || leaf.hidden,
             Node::Horizontal(split) | Node::Vertical(split) => split.fully_collapsed,
             Node::Empty => false,
         }
@@ -122,7 +122,9 @@ impl<Tab> Node<Tab> {
         match self {
             Node::Horizontal(split) | Node::Vertical(split) => split.collapsed_leaf_count,
             Node::Leaf(leaf) => {
-                if leaf.collapsed {
+                if leaf.hidden {
+                    0
+                } else if leaf.collapsed {
                     1
                 } else {
                     0
@@ -336,6 +338,7 @@ impl<Tab> Node<Tab> {
                     active,
                     scroll,
                     collapsed,
+                    hidden,
                 } = leaf;
                 let tabs: Vec<_> = tabs.iter().filter_map(function).collect();
                 if tabs.is_empty() {
@@ -348,6 +351,7 @@ impl<Tab> Node<Tab> {
                         active: *active,
                         scroll: *scroll,
                         collapsed: *collapsed,
+                        hidden: *hidden,
                     })
                 }
             }

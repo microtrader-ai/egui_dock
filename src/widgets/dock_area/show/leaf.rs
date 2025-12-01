@@ -30,6 +30,12 @@ impl<Tab> DockArea<'_, Tab> {
         fade_style: Option<(&Style, f32)>,
     ) {
         assert!(self.dock_state[surface_index][node_index].is_leaf());
+        if self.dock_state[surface_index][node_index]
+            .get_leaf()
+            .is_some_and(|leaf| leaf.hidden)
+        {
+            return;
+        }
         let collapsed = self.dock_state[surface_index][node_index].is_collapsed();
 
         let rect = self.dock_state[surface_index][node_index]

@@ -192,6 +192,56 @@ impl<Tab> DockState<Tab> {
         }
     }
 
+    /// Sets whether the leaf is collapsed (hides its tab body).
+    #[inline]
+    pub fn set_leaf_collapsed(
+        &mut self,
+        (surface_index, node_index): (SurfaceIndex, NodeIndex),
+        collapsed: bool,
+    ) {
+        if let Some(Node::Leaf(leaf)) = self[surface_index].nodes.get_mut(node_index.0) {
+            leaf.collapsed = collapsed;
+            self[surface_index].node_update_collapsed(node_index);
+        }
+    }
+
+    /// Returns whether the leaf is collapsed (hides its tab body).
+    #[inline]
+    pub fn leaf_collapsed(
+        &self,
+        (surface_index, node_index): (SurfaceIndex, NodeIndex),
+    ) -> Option<bool> {
+        match self[surface_index].nodes.get(node_index.0) {
+            Some(Node::Leaf(leaf)) => Some(leaf.collapsed),
+            _ => None,
+        }
+    }
+
+    /// Sets whether the leaf is hidden entirely (tab bar + body).
+    #[inline]
+    pub fn set_leaf_hidden(
+        &mut self,
+        (surface_index, node_index): (SurfaceIndex, NodeIndex),
+        hidden: bool,
+    ) {
+        if let Some(Node::Leaf(leaf)) = self[surface_index].nodes.get_mut(node_index.0) {
+            leaf.hidden = hidden;
+            self[surface_index].node_update_collapsed(node_index);
+        }
+    }
+
+    /// Returns whether the leaf is hidden entirely (tab bar + body).
+    #[inline]
+    pub fn leaf_hidden(
+        &self,
+        (surface_index, node_index): (SurfaceIndex, NodeIndex),
+    ) -> Option<bool> {
+        match self[surface_index].nodes.get(node_index.0) {
+            Some(Node::Leaf(leaf)) => Some(leaf.hidden),
+            _ => None,
+        }
+    }
+
     /// Sets the currently focused leaf to `node_index` if the node at `node_index` is a leaf.
     #[inline]
     pub fn set_focused_node_and_surface(
