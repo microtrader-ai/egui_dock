@@ -759,6 +759,7 @@ impl eframe::App for MyApp {
                 style.separator.width = 2.0;
                 // 右1 尾部空白 25px
                 style.tab_bar.tail_padding = 25.0;
+                style.tab_bar.auto_tail = true;
                 // 水平分割最多 50%，垂直不限制
                 style.separator.max_fraction = Some(vec2(0.5, 1.0));
                 style
@@ -806,10 +807,10 @@ impl eframe::App for MyApp {
                         let label = titles.get(tab.0).map(|s| s.as_str()).unwrap_or_default();
                         ui.horizontal(|ui| {
                             if label == "Simple Demo" {
-                                ui.small_button("+");
-                                ui.small_button("-");
+                                let _ = ui.small_button("+");
+                                let _ = ui.small_button("-");
                             } else {
-                                ui.small_button("+");
+                                let _ = ui.small_button("+");
                             }
                         });
                     }

@@ -134,7 +134,10 @@ impl<Tab> DockArea<'_, Tab> {
     ) -> Rect {
         assert!(self.dock_state[surface_index][node_index].is_leaf());
 
-        let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
+        let style = match fade_style {
+            Some(s) => s.clone(),
+            None => self.style.as_ref().unwrap().clone(),
+        };
         let is_vertical = position.is_vertical();
         let bar_size = if is_vertical {
             vec2(style.tab_bar.height, ui.available_height())
@@ -183,14 +186,15 @@ impl<Tab> DockArea<'_, Tab> {
         if show_collapse_button {
             available_primary -= Style::TAB_COLLAPSE_BUTTON_SIZE + button_padding;
         }
-        let tail_padding = if let Some(provider) = self.tab_bar_tail_padding.as_deref_mut() {
+        let tail_padding_min = if let Some(provider) = self.tab_bar_tail_padding.as_deref_mut() {
             provider(surface_index, node_index, active_index)
         } else {
             style.tab_bar.tail_padding
         };
-        available_primary = (available_primary - tail_padding).at_least(0.0);
+        // Tail padding will be refined after tabs layout; start with the minimum.
+        available_primary = (available_primary - tail_padding_min).at_least(0.0);
 
-        let (actual_primary, tab_hovered) = {
+        let (tab_hovered, actual_primary) = {
             let leaf = self.dock_state[surface_index][node_index]
                 .get_leaf_mut()
                 .expect("This node must be a leaf");
@@ -212,7 +216,7 @@ impl<Tab> DockArea<'_, Tab> {
             let tabbar_inner_rect = Rect::from_min_size(
                 tabbar_outer_rect.min + scroll_offset + collapse_offset,
                 vec2(
-                    (tabbar_outer_rect.width() - tail_padding).at_least(0.0),
+                    (tabbar_outer_rect.width() - tail_padding_min).at_least(0.0),
                     tabbar_outer_rect.height(),
                 ),
             );
@@ -253,7 +257,7 @@ impl<Tab> DockArea<'_, Tab> {
                 .fill_tab_bar
                 .then_some(available_primary / (leaf.tabs.len() as f32));
 
-            let tab_hovered = self.tabs(
+            let (tab_hovered, actual_primary) = self.tabs(
                 tabs_ui,
                 state,
                 (surface_index, node_index),
@@ -265,25 +269,54 @@ impl<Tab> DockArea<'_, Tab> {
                 collapse_allowed,
             );
 
+            let tail_padding = {
+                let tabs_used = if is_vertical {
+                    tabs_ui.min_rect().height()
+                } else {
+                    tabs_ui.min_rect().width()
+                };
+                let bar_len = if is_vertical {
+                    clip_rect.height()
+                } else {
+                    clip_rect.width()
+                };
+                if style.tab_bar.auto_tail {
+                    (bar_len - tabs_used).at_least(tail_padding_min)
+                } else {
+                    tail_padding_min
+                }
+            };
+            // Update available_primary based on final tail padding to drive scrollbar range.
+            if style.tab_bar.auto_tail {
+                if is_vertical {
+                    available_primary = (clip_rect.height() - tail_padding).at_least(0.0);
+                } else {
+                    available_primary = (clip_rect.width() - tail_padding).at_least(0.0);
+                }
+            }
+
             // Draw hline from tab end to edge of tab bar.
             let px = ui.ctx().pixels_per_point().recip();
-            let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
+            let style = match fade_style {
+                Some(style) => style.clone(),
+                None => self.style.as_ref().unwrap().clone(),
+            };
 
             match position {
                 TabBarPosition::Top => {
+                    let tail_end = (clip_rect.left() + clip_rect.width() - tail_padding)
+                        .max(clip_rect.left());
                     ui.painter().hline(
-                        tabs_ui.min_rect().right().min(clip_rect.right())
-                            ..=(tabbar_outer_rect.right() - tail_padding)
-                                .max(tabbar_outer_rect.left()),
+                        tabs_ui.min_rect().right().min(clip_rect.right())..=tail_end,
                         tabbar_outer_rect.bottom() - px,
                         (px, style.tab_bar.hline_color),
                     );
                 }
                 TabBarPosition::Bottom => {
+                    let tail_end = (clip_rect.left() + clip_rect.width() - tail_padding)
+                        .max(clip_rect.left());
                     ui.painter().hline(
-                        tabs_ui.min_rect().right().min(clip_rect.right())
-                            ..=(tabbar_outer_rect.right() - tail_padding)
-                                .max(tabbar_outer_rect.left()),
+                        tabs_ui.min_rect().right().min(clip_rect.right())..=tail_end,
                         tabbar_outer_rect.top() + px,
                         (px, style.tab_bar.hline_color),
                     );
@@ -347,13 +380,16 @@ impl<Tab> DockArea<'_, Tab> {
                 if let Some(tail_cb) = self.tab_bar_tail_content.as_deref_mut() {
                     let tail_rect = match position {
                         TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
-                            pos2(tabbar_outer_rect.right() - tail_padding, tabbar_outer_rect.top()),
+                            pos2(
+                                clip_rect.left() + clip_rect.width() - tail_padding,
+                                tabbar_outer_rect.top(),
+                            ),
                             vec2(tail_padding, tabbar_outer_rect.height()),
                         ),
                         TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
                             pos2(
                                 tabbar_outer_rect.left(),
-                                tabbar_outer_rect.bottom() - tail_padding,
+                                clip_rect.top() + clip_rect.height() - tail_padding,
                             ),
                             vec2(tabbar_outer_rect.width(), tail_padding),
                         ),
@@ -364,17 +400,15 @@ impl<Tab> DockArea<'_, Tab> {
                             .layout(Layout::centered_and_justified(Direction::LeftToRight))
                             .id_salt((node_index, "tab_tail")),
                     );
+                    // Paint background over tail to avoid tab overlap.
+                    ui.painter().rect_filled(tail_rect, CornerRadius::ZERO, style.tab_bar.bg_fill);
                     tail_cb(tail_ui, surface_index, node_index, active_index);
                 }
             }
 
             (
-                if is_vertical {
-                    tabs_ui.min_rect().height()
-                } else {
-                    tabs_ui.min_rect().width()
-                },
                 tab_hovered,
+                actual_primary,
             )
         };
 
@@ -430,8 +464,9 @@ impl<Tab> DockArea<'_, Tab> {
         fade: Option<&Style>,
         position: TabBarPosition,
         _collapse_allowed: bool,
-    ) -> bool {
+    ) -> (bool, f32) {
         let mut tab_hovered = false;
+        let is_vertical = position.is_vertical();
 
         assert!(self.dock_state[surface_index][node_index].is_leaf());
 
@@ -855,7 +890,18 @@ impl<Tab> DockArea<'_, Tab> {
             }
         }
 
-        tab_hovered
+        let actual_primary = match (min_main, max_main) {
+            (Some(min_m), Some(max_m)) => (max_m - min_m).at_least(0.0),
+            _ => {
+                if is_vertical {
+                    tabs_ui.min_rect().height()
+                } else {
+                    tabs_ui.min_rect().width()
+                }
+            }
+        };
+
+        (tab_hovered, actual_primary)
     }
 
     /// Draws the tab add button.
