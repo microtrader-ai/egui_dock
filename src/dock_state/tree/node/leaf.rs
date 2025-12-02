@@ -31,6 +31,10 @@ pub struct LeafNode<Tab> {
     /// Unique identifier for this leaf node (for stable references across tree changes)
     #[cfg_attr(feature = "serde", serde(skip))]
     pub(crate) id: Option<String>,
+
+    /// Whether this node should always keep at least one tab (cannot drag last tab)
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) always_keep: bool,
 }
 
 impl<Tab> LeafNode<Tab> {
@@ -45,7 +49,20 @@ impl<Tab> LeafNode<Tab> {
             collapsed: false,
             hidden: false,
             id: None,
+            always_keep: false,
         }
+    }
+
+    /// Set whether this node should always keep at least one tab
+    #[inline]
+    pub fn set_always_keep(&mut self, always_keep: bool) {
+        self.always_keep = always_keep;
+    }
+
+    /// Get whether this node should always keep at least one tab
+    #[inline]
+    pub fn always_keep(&self) -> bool {
+        self.always_keep
     }
 
     /// Get the unique ID of this leaf node

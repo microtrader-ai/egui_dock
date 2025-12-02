@@ -340,6 +340,7 @@ impl<Tab> Node<Tab> {
                     collapsed,
                     hidden,
                     id,
+                    always_keep,
                 } = leaf;
                 let tabs: Vec<_> = tabs.iter().filter_map(function).collect();
                 if tabs.is_empty() {
@@ -354,6 +355,7 @@ impl<Tab> Node<Tab> {
                         collapsed: *collapsed,
                         hidden: *hidden,
                         id: id.clone(),
+                        always_keep: *always_keep,
                     })
                 }
             }
@@ -392,6 +394,26 @@ impl<Tab> Node<Tab> {
             if leaf.tabs.is_empty() {
                 *self = Node::Empty;
             }
+        }
+    }
+
+    /// Set whether this node should always keep at least one tab.
+    /// Only applies to leaf nodes.
+    #[inline]
+    pub fn set_always_keep(&mut self, always_keep: bool) {
+        if let Node::Leaf(leaf) = self {
+            leaf.set_always_keep(always_keep);
+        }
+    }
+
+    /// Get whether this node should always keep at least one tab.
+    /// Returns false for non-leaf nodes.
+    #[inline]
+    pub fn always_keep(&self) -> bool {
+        if let Node::Leaf(leaf) = self {
+            leaf.always_keep()
+        } else {
+            false
         }
     }
 }

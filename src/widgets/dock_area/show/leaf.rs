@@ -518,12 +518,20 @@ impl<Tab> DockArea<'_, Tab> {
             let tab_index = TabIndex(tab_index);
 
             // Check if this is the last tab in the node
+            // Allow dragging single tab only if:
+            // 1. It's in a window surface (not main), OR
+            // 2. The node doesn't have always_keep set to true
             let is_last_tab = tabs_len == 1;
+            let leaf_always_keep = self.dock_state[surface_index][node_index]
+                .get_leaf()
+                .map(|leaf| leaf.always_keep())
+                .unwrap_or(false);
+            let can_drag_last_tab = !surface_index.is_main() || !leaf_always_keep;
 
             let is_being_dragged = tabs_ui.ctx().is_being_dragged(id)
                 && tabs_ui.input(|i| i.pointer.is_decidedly_dragging())
                 && self.draggable_tabs
-                && !is_last_tab; // Cannot drag the last tab
+                && (!is_last_tab || can_drag_last_tab); // Allow dragging last tab in certain cases
 
             if is_being_dragged {
                 tabs_ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
@@ -539,7 +547,7 @@ impl<Tab> DockArea<'_, Tab> {
                     leaf.active == tab_index || is_being_dragged,
                     tab_viewer.title(&mut leaf.tabs[tab_index.0]),
                     tab_style.unwrap_or(style.tab.clone()),
-                    tab_viewer.is_closeable(&leaf.tabs[tab_index.0]) && !is_last_tab, // Cannot close the last tab
+                    tab_viewer.is_closeable(&leaf.tabs[tab_index.0]) && (!is_last_tab || can_drag_last_tab), // Same logic for closing
                 )
             };
 
@@ -561,7 +569,7 @@ impl<Tab> DockArea<'_, Tab> {
                             show_close_button,
                             position,
                             fade,
-                            !is_last_tab, // draggable
+                            !is_last_tab || can_drag_last_tab, // draggable
                         )
                     })
                     .response;
@@ -606,7 +614,7 @@ impl<Tab> DockArea<'_, Tab> {
                     show_close_button,
                     position,
                     fade,
-                    !is_last_tab, // draggable
+                    !is_last_tab || can_drag_last_tab, // draggable
                 );
                 let title_id = response.id;
                 let close_clicked = close_response.is_some_and(|res| res.clicked());

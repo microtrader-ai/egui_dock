@@ -63,7 +63,11 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "My egui App",
         options,
-        Box::new(|_cc| Ok(Box::<MyApp>::default())),
+        Box::new(|cc| {
+            // Set dark theme
+            cc.egui_ctx.set_visuals(egui::Visuals::dark());
+            Ok(Box::<MyApp>::default())
+        }),
     )
 }
 
@@ -659,6 +663,12 @@ impl Default for MyApp {
             }
         }
 
+        // Set always_keep = true for all initial nodes in main surface
+        dock_state[SurfaceIndex::main()][right_top].set_always_keep(true);
+        dock_state[SurfaceIndex::main()][bottom_node].set_always_keep(true);
+        dock_state[SurfaceIndex::main()][left_top].set_always_keep(true);
+        dock_state[SurfaceIndex::main()][left_bottom].set_always_keep(true);
+
         let mut open_tabs = HashSet::new();
 
         for node in dock_state[SurfaceIndex::main()].iter() {
@@ -708,6 +718,9 @@ impl Default for MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Ensure dark theme is always applied
+        ctx.set_visuals(egui::Visuals::dark());
+
         TopBottomPanel::top("egui_dock::MenuBar").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 ui.menu_button("View", |ui| {
