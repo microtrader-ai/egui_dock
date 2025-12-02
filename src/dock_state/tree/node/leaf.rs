@@ -27,6 +27,10 @@ pub struct LeafNode<Tab> {
     /// Whether the entire leaf (tab bar + body) is hidden.
     #[cfg_attr(feature = "serde", serde(default))]
     pub hidden: bool,
+
+    /// Unique identifier for this leaf node (for stable references across tree changes)
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub(crate) id: Option<String>,
 }
 
 impl<Tab> LeafNode<Tab> {
@@ -40,6 +44,25 @@ impl<Tab> LeafNode<Tab> {
             scroll: 0.0,
             collapsed: false,
             hidden: false,
+            id: None,
+        }
+    }
+
+    /// Get the unique ID of this leaf node
+    #[inline]
+    pub fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    /// Get or create a unique ID for this leaf node (using UUID v4)
+    #[inline]
+    pub(crate) fn get_or_create_id(&mut self) -> String {
+        if let Some(ref id) = self.id {
+            id.clone()
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            self.id = Some(id.clone());
+            id
         }
     }
 

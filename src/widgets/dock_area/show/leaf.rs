@@ -51,9 +51,11 @@ impl<Tab> DockArea<'_, Tab> {
             tab_viewer
                 .tab_bar_position_for_node(surface_index, node_index)
                 .or_else(|| {
+                    // Find the first tab that has a position override, instead of just checking tab[0]
+                    // This prevents the tab bar position from changing when tabs are reordered
                     leaf.tabs
-                        .get(0)
-                        .and_then(|tab| tab_viewer.tab_bar_position(tab))
+                        .iter()
+                        .find_map(|tab| tab_viewer.tab_bar_position(tab))
                 })
                 .unwrap_or(default_position)
         };
@@ -616,6 +618,8 @@ impl<Tab> DockArea<'_, Tab> {
                 if self.tab_context_menus {
                     let eject_button =
                         Button::new(&self.dock_state.translations.tab_context_menu.eject_button);
+                    let move_to_main_button =
+                        Button::new(&self.dock_state.translations.tab_context_menu.move_to_main_button);
                     let close_button =
                         Button::new(&self.dock_state.translations.tab_context_menu.close_button);
 
@@ -626,6 +630,20 @@ impl<Tab> DockArea<'_, Tab> {
                         let tab = &mut leaf.tabs[tab_index.0];
 
                         tab_viewer.context_menu(ui, tab, surface_index, node_index);
+
+                        // Show "Move to Main Window" button if in a window surface
+                        if !surface_index.is_main() && ui.add(move_to_main_button).clicked() {
+                            // Store the request to move tab back to main window
+                            ui.ctx().data_mut(|d| {
+                                d.insert_temp(
+                                    self.id.with("move_to_main_request"),
+                                    Some((surface_index, node_index, tab_index)),
+                                );
+                            });
+                            ui.close();
+                        }
+
+                        // Show "Eject" button if in main window or not the only tab
                         if (surface_index.is_main() || !is_lonely_tab)
                             && tab_viewer.allowed_in_windows(tab)
                             && ui.add(eject_button).clicked()

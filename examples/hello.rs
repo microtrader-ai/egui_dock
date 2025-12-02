@@ -73,7 +73,6 @@ struct MyContext {
     pub style: Option<Style>,
     open_tabs: HashSet<String>,
 
-    tab_positions: HashMap<String, TabBarPosition>,
     node_positions: HashMap<NodeIndex, TabBarPosition>,
     left_root: NodeIndex,
     left_bottom: NodeIndex,
@@ -173,10 +172,6 @@ impl TabViewer for MyContext {
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
         self.open_tabs.remove(tab);
         OnCloseResponse::Close
-    }
-
-    fn tab_bar_position(&self, tab: &Self::Tab) -> Option<TabBarPosition> {
-        self.tab_positions.get(tab.as_str()).copied()
     }
 
     fn tab_bar_position_for_node(
@@ -654,7 +649,7 @@ impl Default for MyApp {
         }
 
         // Left column: split horizontally into two leaves
-        let [_left_top, left_bottom] = dock_state
+        let [left_top, left_bottom] = dock_state
             .main_surface_mut()
             .split_below(left_root, 0.5, vec!["Hierarchy".to_owned()]);
         // Add extra tabs to left_bottom for scrollbar testing.
@@ -673,14 +668,11 @@ impl Default for MyApp {
                 }
             }
         }
-        let mut tab_positions = HashMap::new();
-        tab_positions.insert("Inspector".to_owned(), TabBarPosition::Left);
-        tab_positions.insert("Hierarchy".to_owned(), TabBarPosition::Left);
-        tab_positions.insert("File Browser".to_owned(), TabBarPosition::Bottom);
-        tab_positions.insert("Asset Manager".to_owned(), TabBarPosition::Bottom);
-        tab_positions.insert("Style Editor".to_owned(), tab_bar_position);
-        tab_positions.insert("Simple Demo".to_owned(), tab_bar_position);
+
+        // Set node-level positions (no tab-level positions)
         let mut node_positions = HashMap::new();
+        node_positions.insert(left_top, TabBarPosition::Left);    // Inspector node
+        node_positions.insert(left_bottom, TabBarPosition::Left); // Hierarchy + extras node
         node_positions.insert(bottom_node, TabBarPosition::Bottom);
         node_positions.insert(right_top, tab_bar_position);
         let context = MyContext {
@@ -689,7 +681,6 @@ impl Default for MyApp {
             style: None,
             open_tabs,
 
-            tab_positions,
             node_positions,
             left_root,
             left_bottom,

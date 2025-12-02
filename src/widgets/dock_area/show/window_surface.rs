@@ -18,18 +18,16 @@ impl<Tab> DockArea<'_, Tab> {
         state: &mut State,
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
-        // Construct egui window
+        // Get viewport ID
         let id = format!("window {surf_index:?}").into();
-        let bounds = self.window_bounds.unwrap();
-        let open = true;
-        let window = self
+        let viewport_id = self
             .dock_state
             .get_window_state_mut(surf_index)
             .unwrap()
-            .create_window(id, bounds);
+            .get_or_create_viewport_id(id);
 
         // Calculate fading of the window (if any)
-        let (fade_factor, fade_style) = match fade_style {
+        let (fade_factor, _fade_style) = match fade_style {
             Some((style, factor, surface_index)) => {
                 if surface_index == surf_index {
                     (1.0, None)
@@ -80,42 +78,89 @@ impl<Tab> DockArea<'_, Tab> {
             .get_window_state(surf_index)
             .unwrap()
             .is_minimized();
-        if minimized {
-            let height = tab_bar_height;
-            window
-                .resizable([true, false])
-                .max_height(height)
-                .min_height(height)
+
+        // Get window state for position and size
+        let window_state = self.dock_state.get_window_state_mut(surf_index).unwrap();
+        let next_position = window_state.next_position();
+        let next_size = window_state.next_size();
+        let expanded_height = if window_state.new {
+            window_state.expanded_height()
+        } else {
+            None
+        };
+
+        // Create viewport builder
+        let mut viewport_builder = egui::ViewportBuilder::default()
+            .with_title(title.text())
+            .with_decorations(true)
+            .with_resizable(true);
+
+        if let Some(pos) = next_position {
+            viewport_builder = viewport_builder.with_position(pos);
+        }
+
+        if let Some(size) = next_size {
+            viewport_builder = viewport_builder.with_inner_size(size);
+        } else if minimized {
+            viewport_builder = viewport_builder
+                .with_inner_size([400.0, tab_bar_height])
+                .with_resizable(false);
         } else if self.dock_state[surf_index].is_collapsed() {
             let height = self.dock_state[surf_index].collapsed_leaf_count() as f32 * tab_bar_height;
-            window
-                .resizable([true, false])
-                .max_height(height)
-                .min_height(height)
-        } else {
-            window
+            viewport_builder = viewport_builder
+                .with_inner_size([400.0, height])
+                .with_resizable(false);
+        } else if let Some(height) = expanded_height {
+            viewport_builder = viewport_builder.with_inner_size([400.0, height]);
         }
-        .frame(frame)
-        .show(ui.ctx(), |ui| {
-            // Fade inner ui (if necessary)
-            if fade_factor != 1.0 {
-                fade_visuals(ui.visuals_mut(), fade_factor);
-            }
-            if minimized {
-                self.minimized_body(
-                    ui,
-                    surf_index,
-                    fade_style.map(|(style, _)| style),
-                    title,
-                    tab_count,
-                )
-            } else {
-                self.render_nodes(ui, tab_viewer, state, surf_index, fade_style);
-            }
-        });
 
-        if !open {
-            self.to_remove.push(TabRemoval::Window(surf_index));
+        // Render the viewport content immediately instead of using deferred
+        // This allows us to access &mut self
+        ui.ctx().show_viewport_immediate(
+            viewport_id,
+            viewport_builder,
+            |ctx, _class| {
+                // Handle close request
+                if ctx.input(|i| i.viewport().close_requested()) {
+                    // We can't access self here, so we mark it via context data
+                    ctx.data_mut(|d| {
+                        d.insert_temp(
+                            egui::Id::new("viewport_close_request"),
+                            Some(surf_index),
+                        );
+                    });
+                }
+
+                egui::CentralPanel::default()
+                    .frame(frame)
+                    .show(ctx, |ui| {
+                        // Fade inner ui (if necessary)
+                        if fade_factor != 1.0 {
+                            fade_visuals(ui.visuals_mut(), fade_factor);
+                        }
+
+                        if minimized {
+                            self.minimized_body(
+                                ui,
+                                surf_index,
+                                _fade_style.map(|(style, _surface)| style),
+                                title.clone(),
+                                tab_count,
+                            )
+                        } else {
+                            self.render_nodes(ui, tab_viewer, state, surf_index, _fade_style.map(|(style, factor)| (style, factor)));
+                        }
+                    });
+            },
+        );
+
+        // Check for close request
+        if let Some(Some(close_surface)) = ui.ctx().data_mut(|d| {
+            d.remove_temp::<Option<SurfaceIndex>>(egui::Id::new("viewport_close_request"))
+        }) {
+            if close_surface == surf_index {
+                self.to_remove.push(TabRemoval::Window(surf_index));
+            }
         }
     }
 

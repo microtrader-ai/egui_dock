@@ -200,6 +200,19 @@ impl<Tab> Tree<Tab> {
         self.nodes.len()
     }
 
+    /// Find a node by its unique leaf ID.
+    /// Returns the NodeIndex if found, None otherwise.
+    pub fn find_node_by_id(&self, id: &str) -> Option<NodeIndex> {
+        for (index, node) in self.nodes.iter().enumerate() {
+            if let Node::Leaf(leaf) = node {
+                if leaf.id() == Some(id) {
+                    return Some(NodeIndex(index));
+                }
+            }
+        }
+        None
+    }
+
     /// Returns `true` if the number of nodes in the tree is 0, otherwise `false`.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {

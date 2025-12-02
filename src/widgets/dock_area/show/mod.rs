@@ -12,7 +12,7 @@ use crate::tab_viewer::OnCloseResponse;
 use crate::{
     utils::{expand_to_pixel, fade_dock_style, map_to_pixel},
     AllowedSplits, DockArea, Node, NodeIndex, OverlayType, Style, SurfaceIndex, TabDestination,
-    TabViewer,
+    TabIndex, TabInsert, TabViewer,
 };
 
 mod leaf;
@@ -204,6 +204,65 @@ impl<Tab> DockArea<'_, Tab> {
                         .map_or(Vec2::new(100., 150.), |rect| rect.size()),
                 ),
             );
+        }
+
+        // Handle move_to_main_request
+        if let Some(Some((src_surface, src_node, src_tab))) = ui.ctx().data_mut(|d| {
+            d.remove_temp::<Option<(SurfaceIndex, NodeIndex, TabIndex)>>(
+                self.id.with("move_to_main_request"),
+            )
+        }) {
+            // Check if main surface is empty
+            if self.dock_state.main_surface().is_empty() {
+                // If main surface is empty, use EmptySurface destination
+                self.dock_state.move_tab(
+                    (src_surface, src_node, src_tab),
+                    TabDestination::EmptySurface(SurfaceIndex::main()),
+                );
+            } else {
+                // Try to use the original node ID where the tab was detached from
+                let original_node_id = self.dock_state.get_window_state(src_surface)
+                    .and_then(|ws| ws.original_node_id().map(|s| s.to_string()));
+
+                let dst_node = original_node_id
+                    .and_then(|original_id| {
+                        // Find node by UUID
+                        self.dock_state.main_surface().find_node_by_id(&original_id)
+                    })
+                    // If original node not found (e.g., was deleted), use focused leaf
+                    .or_else(|| {
+                        self.dock_state.main_surface().focused_leaf()
+                    })
+                    .or_else(|| {
+                        // Find the first visible, non-collapsed leaf node
+                        for node_index in self.dock_state.main_surface().breadth_first_index_iter() {
+                            if self.dock_state.main_surface()[node_index].is_leaf() {
+                                if let Some(leaf) = self.dock_state.main_surface()[node_index].get_leaf() {
+                                    if !leaf.hidden && !leaf.collapsed {
+                                        return Some(node_index);
+                                    }
+                                }
+                            }
+                        }
+                        None
+                    })
+                    .unwrap_or(NodeIndex::root());
+
+                self.dock_state.move_tab(
+                    (src_surface, src_node, src_tab),
+                    TabDestination::Node(SurfaceIndex::main(), dst_node, TabInsert::Append),
+                );
+
+                // Ensure the destination leaf is visible and scrolled to show new tab
+                if let Some(leaf) = self.dock_state.main_surface_mut()[dst_node].get_leaf_mut() {
+                    leaf.collapsed = false;
+                    leaf.hidden = false;
+                    leaf.scroll = 0.0; // Reset scroll to beginning
+                }
+
+                // Set focus to the destination node
+                self.new_focused = Some((SurfaceIndex::main(), dst_node));
+            }
         }
 
         if let Some(focused) = self.new_focused {
