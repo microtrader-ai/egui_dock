@@ -516,9 +516,14 @@ impl<Tab> DockArea<'_, Tab> {
                 .with((node_index, "node"))
                 .with((tab_index, "tab"));
             let tab_index = TabIndex(tab_index);
+
+            // Check if this is the last tab in the node
+            let is_last_tab = tabs_len == 1;
+
             let is_being_dragged = tabs_ui.ctx().is_being_dragged(id)
                 && tabs_ui.input(|i| i.pointer.is_decidedly_dragging())
-                && self.draggable_tabs;
+                && self.draggable_tabs
+                && !is_last_tab; // Cannot drag the last tab
 
             if is_being_dragged {
                 tabs_ui.output_mut(|o| o.cursor_icon = CursorIcon::Grabbing);
@@ -534,7 +539,7 @@ impl<Tab> DockArea<'_, Tab> {
                     leaf.active == tab_index || is_being_dragged,
                     tab_viewer.title(&mut leaf.tabs[tab_index.0]),
                     tab_style.unwrap_or(style.tab.clone()),
-                    tab_viewer.is_closeable(&leaf.tabs[tab_index.0]),
+                    tab_viewer.is_closeable(&leaf.tabs[tab_index.0]) && !is_last_tab, // Cannot close the last tab
                 )
             };
 
@@ -556,6 +561,7 @@ impl<Tab> DockArea<'_, Tab> {
                             show_close_button,
                             position,
                             fade,
+                            !is_last_tab, // draggable
                         )
                     })
                     .response;
@@ -600,6 +606,7 @@ impl<Tab> DockArea<'_, Tab> {
                     show_close_button,
                     position,
                     fade,
+                    !is_last_tab, // draggable
                 );
                 let title_id = response.id;
                 let close_clicked = close_response.is_some_and(|res| res.clicked());
@@ -1281,6 +1288,7 @@ impl<Tab> DockArea<'_, Tab> {
         show_close_button: bool,
         position: TabBarPosition,
         fade: Option<&Style>,
+        draggable: bool, // Whether this tab can be dragged
     ) -> (Response, Option<Response>) {
         let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
         let raw_galley = label
@@ -1322,7 +1330,7 @@ impl<Tab> DockArea<'_, Tab> {
         let galley = label.into_galley(ui, None, max_text_extent, TextStyle::Button);
         let (_, tab_rect) = ui.allocate_space(tab_size);
         let mut response = ui.interact(tab_rect, id, Sense::click_and_drag());
-        if ui.ctx().dragged_id().is_none() && self.draggable_tabs {
+        if ui.ctx().dragged_id().is_none() && self.draggable_tabs && draggable {
             response = response.on_hover_cursor(CursorIcon::Grab);
         }
 

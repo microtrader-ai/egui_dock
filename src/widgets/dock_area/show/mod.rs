@@ -176,19 +176,90 @@ impl<Tab> DockArea<'_, Tab> {
                     }
                 }
                 TabRemoval::Window(surface) => {
-                    let mut all_tabs_are_closable = true;
-                    for node in self.dock_state[surface].iter_mut() {
-                        for tab in node.iter_tabs_mut() {
-                            if !(tab_viewer.is_closeable(tab)
-                                && matches!(tab_viewer.on_close(tab), OnCloseResponse::Close))
-                            {
-                                all_tabs_are_closable = false;
+                    // Move all tabs back to main window instead of closing them
+                    // Collect all tabs from the window surface
+                    let mut tabs_to_move = Vec::new();
+                    for node_index in self.dock_state[surface].breadth_first_index_iter() {
+                        if let Some(leaf) = self.dock_state[surface][node_index].get_leaf() {
+                            for tab_index in 0..leaf.tabs.len() {
+                                tabs_to_move.push((surface, node_index, TabIndex(tab_index)));
                             }
                         }
                     }
-                    if all_tabs_are_closable {
-                        self.dock_state.remove_surface(surface);
+
+                    // Move each tab to main window (in reverse to maintain order)
+                    for (src_surface, src_node, src_tab) in tabs_to_move.into_iter().rev() {
+                        // Check if main surface is empty
+                        if self.dock_state.main_surface().is_empty() {
+                            self.dock_state.move_tab(
+                                (src_surface, src_node, src_tab),
+                                TabDestination::EmptySurface(SurfaceIndex::main()),
+                            );
+                        } else {
+                            // Try to use the original node ID and tab index
+                            let window_state = self.dock_state.get_window_state(src_surface);
+                            let original_node_id = window_state
+                                .and_then(|ws| ws.original_node_id().map(|s| s.to_string()));
+                            let original_tab_index = window_state
+                                .and_then(|ws| ws.original_tab_index());
+
+                            let dst_node = original_node_id
+                                .and_then(|original_id| {
+                                    // Find node by UUID
+                                    self.dock_state.main_surface().find_node_by_id(&original_id)
+                                })
+                                // If original node not found, use focused leaf
+                                .or_else(|| {
+                                    self.dock_state.main_surface().focused_leaf()
+                                })
+                                .or_else(|| {
+                                    // Find the first visible, non-collapsed leaf node
+                                    for node_index in self.dock_state.main_surface().breadth_first_index_iter() {
+                                        if self.dock_state.main_surface()[node_index].is_leaf() {
+                                            if let Some(leaf) = self.dock_state.main_surface()[node_index].get_leaf() {
+                                                if !leaf.hidden && !leaf.collapsed {
+                                                    return Some(node_index);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    None
+                                })
+                                .unwrap_or(NodeIndex::root());
+
+                            // Determine the insert position
+                            let tab_insert = if let Some(original_index) = original_tab_index {
+                                // Try to insert at original position
+                                let leaf_len = self.dock_state.main_surface()[dst_node]
+                                    .get_leaf()
+                                    .map(|leaf| leaf.tabs.len())
+                                    .unwrap_or(0);
+
+                                // If original index is still valid, use it; otherwise append
+                                if original_index <= leaf_len {
+                                    TabInsert::Insert(TabIndex(original_index))
+                                } else {
+                                    TabInsert::Append
+                                }
+                            } else {
+                                TabInsert::Append
+                            };
+
+                            self.dock_state.move_tab(
+                                (src_surface, src_node, src_tab),
+                                TabDestination::Node(SurfaceIndex::main(), dst_node, tab_insert),
+                            );
+
+                            // Ensure the destination leaf is visible
+                            if let Some(leaf) = self.dock_state.main_surface_mut()[dst_node].get_leaf_mut() {
+                                leaf.collapsed = false;
+                                leaf.hidden = false;
+                            }
+                        }
                     }
+
+                    // Now remove the empty surface
+                    self.dock_state.remove_surface(surface);
                 }
             }
         }
@@ -220,9 +291,12 @@ impl<Tab> DockArea<'_, Tab> {
                     TabDestination::EmptySurface(SurfaceIndex::main()),
                 );
             } else {
-                // Try to use the original node ID where the tab was detached from
-                let original_node_id = self.dock_state.get_window_state(src_surface)
+                // Try to use the original node ID and tab index
+                let window_state = self.dock_state.get_window_state(src_surface);
+                let original_node_id = window_state
                     .and_then(|ws| ws.original_node_id().map(|s| s.to_string()));
+                let original_tab_index = window_state
+                    .and_then(|ws| ws.original_tab_index());
 
                 let dst_node = original_node_id
                     .and_then(|original_id| {
@@ -248,9 +322,27 @@ impl<Tab> DockArea<'_, Tab> {
                     })
                     .unwrap_or(NodeIndex::root());
 
+                // Determine the insert position
+                let tab_insert = if let Some(original_index) = original_tab_index {
+                    // Try to insert at original position
+                    let leaf_len = self.dock_state.main_surface()[dst_node]
+                        .get_leaf()
+                        .map(|leaf| leaf.tabs.len())
+                        .unwrap_or(0);
+
+                    // If original index is still valid, use it; otherwise append
+                    if original_index <= leaf_len {
+                        TabInsert::Insert(TabIndex(original_index))
+                    } else {
+                        TabInsert::Append
+                    }
+                } else {
+                    TabInsert::Append
+                };
+
                 self.dock_state.move_tab(
                     (src_surface, src_node, src_tab),
-                    TabDestination::Node(SurfaceIndex::main(), dst_node, TabInsert::Append),
+                    TabDestination::Node(SurfaceIndex::main(), dst_node, tab_insert),
                 );
 
                 // Ensure the destination leaf is visible and scrolled to show new tab

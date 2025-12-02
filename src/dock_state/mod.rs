@@ -312,12 +312,13 @@ impl<Tab> DockState<Tab> {
         (src_surface, src_node, src_tab): (SurfaceIndex, NodeIndex, TabIndex),
         window_rect: Rect,
     ) -> SurfaceIndex {
-        // Remember the original node ID for "Move to Main Window" feature (before removing tab)
-        let original_node_id = if src_surface.is_main() {
-            self[src_surface][src_node].get_leaf_mut()
-                .map(|leaf| leaf.get_or_create_id())
+        // Remember the original node ID and tab index for "Move to Main Window" feature (before removing tab)
+        let (original_node_id, original_tab_index) = if src_surface.is_main() {
+            let node_id = self[src_surface][src_node].get_leaf_mut()
+                .map(|leaf| leaf.get_or_create_id());
+            (node_id, Some(src_tab.0))
         } else {
-            None
+            (None, None)
         };
 
         // Remove the tab from the tree and it add to a new window.
@@ -331,6 +332,9 @@ impl<Tab> DockState<Tab> {
             state.set_size(window_rect.size() * 0.8);
             if let Some(node_id) = original_node_id {
                 state.set_original_node_id(node_id);
+            }
+            if let Some(tab_index) = original_tab_index {
+                state.set_original_tab_index(tab_index);
             }
         } else {
             state.set_size(window_rect.size());

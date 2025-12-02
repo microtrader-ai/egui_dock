@@ -39,6 +39,10 @@ pub struct WindowState {
     /// Remember the original node ID this window was detached from (for move back)
     #[cfg_attr(feature = "serde", serde(skip))]
     original_node_id: Option<String>,
+
+    /// Remember the original tab index within the node (for move back)
+    #[cfg_attr(feature = "serde", serde(skip))]
+    original_tab_index: Option<usize>,
 }
 
 impl Default for WindowState {
@@ -54,6 +58,7 @@ impl Default for WindowState {
             viewport_id: None,
             should_close: false,
             original_node_id: None,
+            original_tab_index: None,
         }
     }
 }
@@ -168,6 +173,18 @@ impl WindowState {
     #[inline(always)]
     pub(crate) fn original_node_id(&self) -> Option<&str> {
         self.original_node_id.as_deref()
+    }
+
+    /// Set the original tab index this window was detached from.
+    #[inline(always)]
+    pub(crate) fn set_original_tab_index(&mut self, tab_index: usize) {
+        self.original_tab_index = Some(tab_index);
+    }
+
+    /// Get the original tab index this window was detached from.
+    #[inline(always)]
+    pub(crate) fn original_tab_index(&self) -> Option<usize> {
+        self.original_tab_index
     }
 
     //the 'static in this case means that the `open` field is always `None`

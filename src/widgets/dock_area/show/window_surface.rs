@@ -148,7 +148,27 @@ impl<Tab> DockArea<'_, Tab> {
                                 tab_count,
                             )
                         } else {
-                            self.render_nodes(ui, tab_viewer, state, surf_index, _fade_style.map(|(style, factor)| (style, factor)));
+                            // For single-tab windows, show content directly without tab bar
+                            if tab_count == 1 {
+                                let node_id = self.dock_state[surf_index]
+                                    .focused_leaf()
+                                    .unwrap_or_else(|| {
+                                        for node_index in self.dock_state[surf_index].breadth_first_index_iter() {
+                                            if self.dock_state[surf_index][node_index].is_leaf() {
+                                                return node_index;
+                                            }
+                                        }
+                                        unreachable!("a window surface should never be empty")
+                                    });
+
+                                if let Some(leaf) = self.dock_state[surf_index][node_id].get_leaf_mut() {
+                                    let tab = &mut leaf.tabs[leaf.active.0];
+                                    tab_viewer.ui(ui, tab);
+                                }
+                            } else {
+                                // Multiple tabs: show normal tree with tab bar
+                                self.render_nodes(ui, tab_viewer, state, surf_index, _fade_style.map(|(style, factor)| (style, factor)));
+                            }
                         }
                     });
             },
