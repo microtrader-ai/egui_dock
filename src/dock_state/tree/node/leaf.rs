@@ -36,6 +36,10 @@ pub struct LeafNode<Tab> {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) always_keep: bool,
 
+    /// Whether to show the built-in fullscreen toggle button on the tab tail.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) fullscreen_toggle: bool,
+
     /// Drop permissions inherited from the family.
     #[cfg_attr(feature = "serde", serde(default = "AllowedDrops::all"))]
     pub allowed_drops: AllowedDrops,
@@ -58,6 +62,7 @@ impl<Tab> LeafNode<Tab> {
             hidden: false,
             id: None,
             always_keep: false,
+            fullscreen_toggle: false,
             allowed_drops: AllowedDrops::all(),
             family_id: None,
         }
@@ -73,6 +78,18 @@ impl<Tab> LeafNode<Tab> {
     #[inline]
     pub fn always_keep(&self) -> bool {
         self.always_keep
+    }
+
+    /// Set whether to show the fullscreen toggle on this node.
+    #[inline]
+    pub fn set_fullscreen_toggle(&mut self, enabled: bool) {
+        self.fullscreen_toggle = enabled;
+    }
+
+    /// Get whether the fullscreen toggle is enabled.
+    #[inline]
+    pub fn fullscreen_toggle(&self) -> bool {
+        self.fullscreen_toggle
     }
 
     /// Get the unique ID of this leaf node

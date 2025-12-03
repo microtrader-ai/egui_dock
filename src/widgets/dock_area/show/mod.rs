@@ -48,7 +48,10 @@ impl<Tab> DockArea<'_, Tab> {
     ///
     /// See also [`show_inside`](Self::show_inside).
     #[inline]
-    pub fn show(self, ctx: &Context, tab_viewer: &mut impl TabViewer<Tab = Tab>) {
+    pub fn show(self, ctx: &Context, tab_viewer: &mut impl TabViewer<Tab = Tab>)
+    where
+        Tab: Clone,
+    {
         CentralPanel::default()
             .frame(
                 Frame::central_panel(&ctx.style())
@@ -63,7 +66,10 @@ impl<Tab> DockArea<'_, Tab> {
     /// Shows the docking hierarchy inside a [`Ui`].
     ///
     /// See also [`show`](Self::show).
-    pub fn show_inside(mut self, ui: &mut Ui, tab_viewer: &mut impl TabViewer<Tab = Tab>) {
+    pub fn show_inside(mut self, ui: &mut Ui, tab_viewer: &mut impl TabViewer<Tab = Tab>)
+    where
+        Tab: Clone,
+    {
         self.style
             .get_or_insert(Style::from_egui(ui.style().as_ref()));
         self.window_bounds.get_or_insert(ui.ctx().content_rect());
@@ -366,6 +372,15 @@ impl<Tab> DockArea<'_, Tab> {
             self.dock_state.set_focused_node_and_surface(focused);
         }
 
+        // Handle fullscreen toggle requests emitted by tail buttons.
+        if let Some(Some((surf, node, tab))) = ui.ctx().data_mut(|d| {
+            d.remove_temp::<Option<(SurfaceIndex, NodeIndex, TabIndex)>>(
+                self.id.with("fullscreen_request"),
+            )
+        }) {
+            let _ = self.dock_state.toggle_fullscreen((surf, node, tab));
+        }
+
         state.store(ui.ctx(), self.id);
     }
 
@@ -423,15 +438,6 @@ impl<Tab> DockArea<'_, Tab> {
                 }
             }
         };
-
-        let same_leaf = matches!(
-            (
-                drag_state.drag.src.node_address(),
-                drag_state.hover.dst.node_address()
-            ),
-            ((src_surf, Some(src_node)), (dst_surf, Some(dst_node)))
-                if src_surf == dst_surf && src_node == dst_node
-        );
 
         let src_family_id = match drag_state.drag.src {
             TreeComponent::Tab(surface, node, _) | TreeComponent::Node(surface, node) => self

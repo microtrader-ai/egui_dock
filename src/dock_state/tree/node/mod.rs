@@ -354,6 +354,7 @@ impl<Tab> Node<Tab> {
                     hidden,
                     id,
                     always_keep,
+                    fullscreen_toggle,
                     allowed_drops,
                     family_id,
                 } = leaf;
@@ -371,6 +372,7 @@ impl<Tab> Node<Tab> {
                         hidden: *hidden,
                         id: id.clone(),
                         always_keep: *always_keep,
+                        fullscreen_toggle: *fullscreen_toggle,
                         allowed_drops: allowed_drops.clone(),
                         family_id: family_id.clone(),
                     })
@@ -429,6 +431,24 @@ impl<Tab> Node<Tab> {
     pub fn always_keep(&self) -> bool {
         if let Node::Leaf(leaf) = self {
             leaf.always_keep()
+        } else {
+            false
+        }
+    }
+
+    /// Enable/disable the fullscreen toggle button on the tab tail (leaf only).
+    #[inline]
+    pub fn set_fullscreen_toggle(&mut self, enabled: bool) {
+        if let Node::Leaf(leaf) = self {
+            leaf.set_fullscreen_toggle(enabled);
+        }
+    }
+
+    /// Returns whether the fullscreen toggle is enabled for this node.
+    #[inline]
+    pub fn fullscreen_toggle(&self) -> bool {
+        if let Node::Leaf(leaf) = self {
+            leaf.fullscreen_toggle()
         } else {
             false
         }

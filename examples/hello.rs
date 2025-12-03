@@ -99,9 +99,6 @@ struct MyContext {
 struct MyApp {
     context: MyContext,
     tree: DockState<String>,
-    initial_tree: DockState<String>,
-    saved_layout: Option<DockState<String>>,
-    fullscreen_tab: Option<String>,
 }
 
 impl MyContext {
@@ -685,6 +682,8 @@ impl Default for MyApp {
             float: true,
             tabs: true,
         });
+        // 右1 开启全屏按钮
+        dock_state[SurfaceIndex::main()][right_top].set_fullscreen_toggle(true);
         // 右2 禁用浮动（其余保持默认）
         dock_state[SurfaceIndex::main()][bottom_node].set_allowed_drops(AllowedDrops {
             float: false,
@@ -733,10 +732,7 @@ impl Default for MyApp {
 
         Self {
             context,
-            initial_tree: dock_state.clone(),
             tree: dock_state,
-            saved_layout: None,
-            fullscreen_tab: None,
         }
     }
 }
@@ -905,14 +901,6 @@ impl eframe::App for MyApp {
                                         if ui.small_button("-").clicked() {
                                             // Handle remove action if needed
                                         }
-                                        if ui.small_button("⛶").clicked() {
-                                            ui.ctx().data_mut(|d| {
-                                                d.insert_temp(
-                                                    egui::Id::new("fullscreen_request"),
-                                                    Some(label.to_string()),
-                                                );
-                                            });
-                                        }
                                     } else {
                                         let add_response = ui.small_button("+");
                                         let popup_id = ui.id().with("custom_add_popup");
@@ -959,14 +947,6 @@ impl eframe::App for MyApp {
                                                 }
                                             },
                                         );
-                                        if ui.small_button("⛶").clicked() {
-                                            ui.ctx().data_mut(|d| {
-                                                d.insert_temp(
-                                                    egui::Id::new("fullscreen_request"),
-                                                    Some(label.to_string()),
-                                                );
-                                            });
-                                        }
                                     }
                                 });
                             }
@@ -993,30 +973,6 @@ impl eframe::App for MyApp {
                         if let Some(leaf) = self.tree[surface][node].get_leaf_mut() {
                             leaf.append_tab(new_tab);
                         }
-                    }
-                }
-
-                // Handle fullscreen toggle request from tail button
-                if let Some(Some(tab_label)) = ctx.data_mut(|d| {
-                    d.remove_temp::<Option<String>>(egui::Id::new("fullscreen_request"))
-                }) {
-                    if self.fullscreen_tab.is_some() {
-                        // Restore saved or initial layout.
-                        if let Some(saved) = self.saved_layout.take() {
-                            self.tree = saved;
-                        } else {
-                            self.tree = self.initial_tree.clone();
-                        }
-                        self.fullscreen_tab = None;
-                    } else {
-                        // Enter fullscreen for the requested tab.
-                        self.saved_layout = Some(self.tree.clone());
-                        let mut new_state = DockState::new(vec![tab_label.clone()]);
-                        if let Some(saved) = &self.saved_layout {
-                            new_state.translations = saved.translations.clone();
-                        }
-                        self.tree = new_state;
-                        self.fullscreen_tab = Some(tab_label);
                     }
                 }
             });

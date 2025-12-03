@@ -36,6 +36,14 @@ pub struct DockState<Tab> {
 
     /// Contains translations of text shown in [`DockArea`](crate::DockArea).
     pub translations: Translations,
+
+    /// Backup of previous layout when in fullscreen mode.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    fullscreen_backup: Option<Box<DockState<Tab>>>,
+
+    /// Where the fullscreen tab came from.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    fullscreen_origin: Option<(SurfaceIndex, NodeIndex, TabIndex)>,
 }
 
 impl<Tab> std::ops::Index<SurfaceIndex> for DockState<Tab> {
@@ -71,6 +79,8 @@ impl<Tab> DockState<Tab> {
             surfaces: vec![Surface::Main(Tree::new(tabs))],
             focused_surface: None,
             translations: Translations::english(),
+            fullscreen_backup: None,
+            fullscreen_origin: None,
         }
     }
 
@@ -242,6 +252,101 @@ impl<Tab> DockState<Tab> {
             Some(Node::Leaf(leaf)) => Some(leaf.hidden),
             _ => None,
         }
+    }
+
+    /// Returns true when a fullscreen layout is active.
+    pub fn fullscreen_active(&self) -> bool {
+        self.fullscreen_backup.is_some()
+    }
+
+    /// Toggle fullscreen for a specific tab. Returns true if a transition occurred.
+    pub fn toggle_fullscreen(
+        &mut self,
+        (surf, node, tab): (SurfaceIndex, NodeIndex, TabIndex),
+    ) -> bool
+    where
+        Tab: Clone,
+    {
+        if self.fullscreen_active() {
+            self.exit_fullscreen()
+        } else {
+            self.enter_fullscreen((surf, node, tab))
+        }
+    }
+
+    fn enter_fullscreen(
+        &mut self,
+        (surf, node, tab): (SurfaceIndex, NodeIndex, TabIndex),
+    ) -> bool
+    where
+        Tab: Clone,
+    {
+        if !self.is_surface_valid(surf)
+            || node.0 >= self[surf].len()
+            || !self[surf][node].is_leaf()
+            || self[surf][node].tabs_count() <= tab.0
+        {
+            return false;
+        }
+
+        let mut backup = self.clone();
+        let removed = backup.remove_tab((surf, node, tab));
+        let Some(tab_val) = removed else {
+            return false;
+        };
+
+        let mut new_state = DockState::new(vec![tab_val]);
+        new_state.translations = backup.translations.clone();
+        if let Some(root) = new_state.main_surface_mut().root_node_mut() {
+            root.set_fullscreen_toggle(true);
+        }
+        new_state.fullscreen_backup = Some(Box::new(backup));
+        new_state.fullscreen_origin = Some((surf, node, tab));
+        *self = new_state;
+        true
+    }
+
+    fn exit_fullscreen(&mut self) -> bool
+    where
+        Tab: Clone,
+    {
+        let Some(backup) = self.fullscreen_backup.take() else {
+            return false;
+        };
+        let mut backup = *backup;
+        let current_tab = {
+            let mut found = None;
+            let surface = SurfaceIndex::main();
+            for node_idx in self[surface].breadth_first_index_iter() {
+                if self[surface][node_idx].is_leaf() && self[surface][node_idx].tabs_count() > 0 {
+                    found = self[surface][node_idx].remove_tab(TabIndex(0));
+                    break;
+                }
+            }
+            found
+        };
+
+        if let Some(tab_val) = current_tab {
+            if let Some((orig_surf, orig_node, orig_tab)) = self.fullscreen_origin.take() {
+                if backup.is_surface_valid(orig_surf)
+                    && orig_node.0 < backup[orig_surf].len()
+                    && backup[orig_surf][orig_node].is_leaf()
+                {
+                    let len = backup[orig_surf][orig_node].tabs_count();
+                    let idx = orig_tab.0.min(len);
+                    backup[orig_surf][orig_node].insert_tab(TabIndex(idx), tab_val);
+                } else {
+                    backup.push_to_first_leaf(tab_val);
+                }
+            } else {
+                backup.push_to_first_leaf(tab_val);
+            }
+        }
+
+        backup.fullscreen_backup = None;
+        backup.fullscreen_origin = None;
+        *self = backup;
+        true
     }
 
     /// Sets the currently focused leaf to `node_index` if the node at `node_index` is a leaf.
@@ -611,6 +716,7 @@ impl<Tab> DockState<Tab> {
             surfaces,
             focused_surface,
             translations,
+            ..
         } = self;
         let surfaces = surfaces
             .iter()
@@ -623,6 +729,8 @@ impl<Tab> DockState<Tab> {
             surfaces,
             focused_surface: *focused_surface,
             translations: translations.clone(),
+            fullscreen_backup: None,
+            fullscreen_origin: None,
         }
     }
 

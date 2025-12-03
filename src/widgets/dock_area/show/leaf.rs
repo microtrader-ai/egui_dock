@@ -188,11 +188,16 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             0.0
         };
+        let fullscreen_extra = if self.dock_state[surface_index][node_index].fullscreen_toggle() {
+            style.tab_bar.height
+        } else {
+            0.0
+        };
         let tail_padding_min = if let Some(provider) = self.tab_bar_tail_padding.as_deref_mut() {
             provider(surface_index, node_index, active_index)
         } else {
             style.tab_bar.tail_padding
-        };
+        } + fullscreen_extra;
 
         // Length dedicated to tabs + tail (collapse button already removed).
         let tab_tail_len = (bar_len - collapse_space).at_least(0.0);
@@ -407,17 +412,77 @@ impl<Tab> DockArea<'_, Tab> {
 
         // Custom tail content (reserved by tail_padding).
         if tail_padding > 0.0 {
-            if let Some(tail_cb) = self.tab_bar_tail_content.as_deref_mut() {
-                let tail_rect = match position {
+            let mut tail_rect = match position {
+                TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
+                    pos2(tail_start, tabbar_outer_rect.top()),
+                    vec2(tail_padding, tabbar_outer_rect.height()),
+                ),
+                TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
+                    pos2(tabbar_outer_rect.left(), tail_start),
+                    vec2(tabbar_outer_rect.width(), tail_padding),
+                ),
+            };
+
+            // Built-in fullscreen button at the far end of tail padding.
+            if self.dock_state[surface_index][node_index].fullscreen_toggle() {
+                let button_size = match position {
+                    TabBarPosition::Top | TabBarPosition::Bottom => {
+                        vec2(style.tab_bar.height, tail_rect.height())
+                    }
+                    TabBarPosition::Left | TabBarPosition::Right => {
+                        vec2(tail_rect.width(), style.tab_bar.height)
+                    }
+                };
+                let button_rect = match position {
                     TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
-                        pos2(tail_start, tabbar_outer_rect.top()),
-                        vec2(tail_padding, tabbar_outer_rect.height()),
+                        pos2(tail_rect.right() - button_size.x, tail_rect.top()),
+                        button_size,
                     ),
                     TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
-                        pos2(tabbar_outer_rect.left(), tail_start),
-                        vec2(tabbar_outer_rect.width(), tail_padding),
+                        pos2(tail_rect.left(), tail_rect.bottom() - button_size.y),
+                        button_size,
                     ),
                 };
+                let label = egui::RichText::new("⛶").size(style.tab_bar.height * 0.6);
+                let is_fullscreen = self.dock_state.fullscreen_active();
+                let resp = ui.put(button_rect, egui::Button::new(label));
+                if resp.clicked() {
+                    ui.ctx().data_mut(|d| {
+                        d.insert_temp(
+                            self.id.with("fullscreen_request"),
+                            Some((surface_index, node_index, active_index)),
+                        )
+                    });
+                }
+                if resp.hovered() {
+                    ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
+                    let tooltip = if is_fullscreen {
+                        "退出全屏"
+                    } else {
+                        "全屏当前标签页"
+                    };
+                    resp.on_hover_text(tooltip);
+                }
+                // Shrink tail rect for custom content to avoid overlap with fullscreen button.
+                tail_rect = match position {
+                    TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_size(
+                        tail_rect.min,
+                        vec2(
+                            (tail_rect.width() - button_size.x).at_least(0.0),
+                            tail_rect.height(),
+                        ),
+                    ),
+                    TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_size(
+                        tail_rect.min,
+                        vec2(
+                            tail_rect.width(),
+                            (tail_rect.height() - button_size.y).at_least(0.0),
+                        ),
+                    ),
+                };
+            }
+
+            if let Some(tail_cb) = self.tab_bar_tail_content.as_deref_mut() {
                 let tail_ui = &mut ui.new_child(
                     UiBuilder::new()
                         .max_rect(tail_rect)
@@ -435,6 +500,10 @@ impl<Tab> DockArea<'_, Tab> {
                 ui.painter()
                     .rect_filled(tail_rect, CornerRadius::ZERO, style.tab_bar.bg_fill);
                 tail_cb(tail_ui, surface_index, node_index, active_index);
+            } else {
+                // Still paint tail background if no custom content.
+                ui.painter()
+                    .rect_filled(tail_rect, CornerRadius::ZERO, style.tab_bar.bg_fill);
             }
         }
 

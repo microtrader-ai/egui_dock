@@ -38,7 +38,6 @@ pub struct DockArea<'tree, Tab> {
     window_bounds: Option<Rect>,
     tab_bar_tail_content: Option<Box<dyn FnMut(&mut Ui, SurfaceIndex, NodeIndex, TabIndex)>>,
     tab_bar_tail_padding: Option<Box<dyn FnMut(SurfaceIndex, NodeIndex, TabIndex) -> f32>>,
-
     to_remove: Vec<TabRemoval>,
     to_detach: Vec<(SurfaceIndex, NodeIndex, TabIndex)>,
     new_focused: Option<(SurfaceIndex, NodeIndex)>,
