@@ -1,6 +1,6 @@
 use egui::Rect;
 
-use crate::TabIndex;
+use crate::{AllowedDrops, TabIndex};
 
 /// The inner data of a [``Node::Leaf``](crate::Node), which contains tabs and can be collapsed.
 #[derive(Clone, Debug)]
@@ -35,11 +35,19 @@ pub struct LeafNode<Tab> {
     /// Whether this node should always keep at least one tab (cannot drag last tab)
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) always_keep: bool,
+
+    /// Drop permissions inherited from the family.
+    #[cfg_attr(feature = "serde", serde(default = "AllowedDrops::all"))]
+    pub allowed_drops: AllowedDrops,
+
+    /// Family identifier used to constrain where tabs can be dropped.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub(crate) family_id: Option<String>,
 }
 
 impl<Tab> LeafNode<Tab> {
     /// Create New LeafNode with specified ``tabs``, all other internal values will be filled by "nothing" defaults.
-    pub const fn new(tabs: Vec<Tab>) -> Self {
+    pub fn new(tabs: Vec<Tab>) -> Self {
         LeafNode {
             rect: Rect::NOTHING,
             viewport: Rect::NOTHING,
@@ -50,6 +58,8 @@ impl<Tab> LeafNode<Tab> {
             hidden: false,
             id: None,
             always_keep: false,
+            allowed_drops: AllowedDrops::all(),
+            family_id: None,
         }
     }
 
@@ -79,6 +89,18 @@ impl<Tab> LeafNode<Tab> {
         } else {
             let id = uuid::Uuid::new_v4().to_string();
             self.id = Some(id.clone());
+            id
+        }
+    }
+
+    /// Get or create a family id for this leaf node.
+    #[inline]
+    pub(crate) fn get_or_create_family_id(&mut self) -> String {
+        if let Some(ref id) = self.family_id {
+            id.clone()
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            self.family_id = Some(id.clone());
             id
         }
     }

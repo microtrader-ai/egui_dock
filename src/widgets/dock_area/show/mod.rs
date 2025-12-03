@@ -11,8 +11,8 @@ use crate::dock_area::tab_removal::ForcedRemoval;
 use crate::tab_viewer::OnCloseResponse;
 use crate::{
     utils::{expand_to_pixel, fade_dock_style, map_to_pixel},
-    AllowedSplits, DockArea, Node, NodeIndex, OverlayType, Style, SurfaceIndex, TabDestination,
-    TabIndex, TabInsert, TabViewer,
+    AllowedDrops, AllowedSplits, DockArea, Node, NodeIndex, OverlayType, Style, SurfaceIndex,
+    TabDestination, TabIndex, TabInsert, TabViewer,
 };
 
 mod leaf;
@@ -200,8 +200,8 @@ impl<Tab> DockArea<'_, Tab> {
                             let window_state = self.dock_state.get_window_state(src_surface);
                             let original_node_id = window_state
                                 .and_then(|ws| ws.original_node_id().map(|s| s.to_string()));
-                            let original_tab_index = window_state
-                                .and_then(|ws| ws.original_tab_index());
+                            let original_tab_index =
+                                window_state.and_then(|ws| ws.original_tab_index());
 
                             let dst_node = original_node_id
                                 .and_then(|original_id| {
@@ -209,14 +209,17 @@ impl<Tab> DockArea<'_, Tab> {
                                     self.dock_state.main_surface().find_node_by_id(&original_id)
                                 })
                                 // If original node not found, use focused leaf
-                                .or_else(|| {
-                                    self.dock_state.main_surface().focused_leaf()
-                                })
+                                .or_else(|| self.dock_state.main_surface().focused_leaf())
                                 .or_else(|| {
                                     // Find the first visible, non-collapsed leaf node
-                                    for node_index in self.dock_state.main_surface().breadth_first_index_iter() {
+                                    for node_index in
+                                        self.dock_state.main_surface().breadth_first_index_iter()
+                                    {
                                         if self.dock_state.main_surface()[node_index].is_leaf() {
-                                            if let Some(leaf) = self.dock_state.main_surface()[node_index].get_leaf() {
+                                            if let Some(leaf) = self.dock_state.main_surface()
+                                                [node_index]
+                                                .get_leaf()
+                                            {
                                                 if !leaf.hidden && !leaf.collapsed {
                                                     return Some(node_index);
                                                 }
@@ -251,7 +254,9 @@ impl<Tab> DockArea<'_, Tab> {
                             );
 
                             // Ensure the destination leaf is visible
-                            if let Some(leaf) = self.dock_state.main_surface_mut()[dst_node].get_leaf_mut() {
+                            if let Some(leaf) =
+                                self.dock_state.main_surface_mut()[dst_node].get_leaf_mut()
+                            {
                                 leaf.collapsed = false;
                                 leaf.hidden = false;
                             }
@@ -293,10 +298,9 @@ impl<Tab> DockArea<'_, Tab> {
             } else {
                 // Try to use the original node ID and tab index
                 let window_state = self.dock_state.get_window_state(src_surface);
-                let original_node_id = window_state
-                    .and_then(|ws| ws.original_node_id().map(|s| s.to_string()));
-                let original_tab_index = window_state
-                    .and_then(|ws| ws.original_tab_index());
+                let original_node_id =
+                    window_state.and_then(|ws| ws.original_node_id().map(|s| s.to_string()));
+                let original_tab_index = window_state.and_then(|ws| ws.original_tab_index());
 
                 let dst_node = original_node_id
                     .and_then(|original_id| {
@@ -304,14 +308,15 @@ impl<Tab> DockArea<'_, Tab> {
                         self.dock_state.main_surface().find_node_by_id(&original_id)
                     })
                     // If original node not found (e.g., was deleted), use focused leaf
-                    .or_else(|| {
-                        self.dock_state.main_surface().focused_leaf()
-                    })
+                    .or_else(|| self.dock_state.main_surface().focused_leaf())
                     .or_else(|| {
                         // Find the first visible, non-collapsed leaf node
-                        for node_index in self.dock_state.main_surface().breadth_first_index_iter() {
+                        for node_index in self.dock_state.main_surface().breadth_first_index_iter()
+                        {
                             if self.dock_state.main_surface()[node_index].is_leaf() {
-                                if let Some(leaf) = self.dock_state.main_surface()[node_index].get_leaf() {
+                                if let Some(leaf) =
+                                    self.dock_state.main_surface()[node_index].get_leaf()
+                                {
                                     if !leaf.hidden && !leaf.collapsed {
                                         return Some(node_index);
                                     }
@@ -395,6 +400,54 @@ impl<Tab> DockArea<'_, Tab> {
         let drag_state = state.dnd.as_mut().unwrap();
         let style = self.style.as_ref().unwrap();
 
+        let (target_allowed, target_family_id) = match drag_state.hover.dst {
+            TreeComponent::Node(surface, node) | TreeComponent::Tab(surface, node, _) => {
+                let node = &self.dock_state[surface][node];
+                (
+                    node.allowed_drops()
+                        .cloned()
+                        .unwrap_or_else(AllowedDrops::all),
+                    node.family_id().map(str::to_string),
+                )
+            }
+            TreeComponent::Surface(surface) => {
+                if let Some(root) = self.dock_state[surface].root_node() {
+                    (
+                        root.allowed_drops()
+                            .cloned()
+                            .unwrap_or_else(AllowedDrops::all),
+                        root.family_id().map(str::to_string),
+                    )
+                } else {
+                    (AllowedDrops::all(), None)
+                }
+            }
+        };
+
+        let same_leaf = matches!(
+            (
+                drag_state.drag.src.node_address(),
+                drag_state.hover.dst.node_address()
+            ),
+            ((src_surf, Some(src_node)), (dst_surf, Some(dst_node)))
+                if src_surf == dst_surf && src_node == dst_node
+        );
+
+        let src_family_id = match drag_state.drag.src {
+            TreeComponent::Tab(surface, node, _) | TreeComponent::Node(surface, node) => self
+                .dock_state[surface][node]
+                .family_id()
+                .map(str::to_string),
+            TreeComponent::Surface(surface) => self.dock_state[surface]
+                .root_node()
+                .and_then(|node| node.family_id().map(str::to_string)),
+        };
+
+        let family_ok = match (src_family_id.as_deref(), target_family_id.as_deref()) {
+            (Some(a), Some(b)) => a == b,
+            _ => true,
+        };
+
         let deserted_node = {
             match (
                 drag_state.drag.src.node_address(),
@@ -415,7 +468,12 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             AllowedSplits::All
         };
-        let allowed_splits = self.allowed_splits & restricted_splits;
+        let node_splits = target_allowed.to_allowed_splits();
+        let allowed_splits = if family_ok {
+            (self.allowed_splits & restricted_splits) & node_splits
+        } else {
+            AllowedSplits::None
+        };
 
         let allowed_in_window = match drag_state.drag.src {
             TreeComponent::Tab(surface, node, tab) => {
@@ -426,6 +484,10 @@ impl<Tab> DockArea<'_, Tab> {
             }
             _ => todo!("collections of tabs, like nodes or surfaces, can't be dragged! (yet)"),
         };
+        // 仅在同族且目标允许浮动时才允许窗口化，否则跨族悬停不触发浮动/投放。
+        let windows_allowed = family_ok && allowed_in_window && target_allowed.float;
+        // 同节点内也允许 tab 区域 drop，以便避免与浮窗区域冲突。
+        let tabs_allowed = family_ok && target_allowed.tabs;
 
         if let Some(pointer) = state.last_hover_pos {
             drag_state.pointer = pointer;
@@ -437,14 +499,16 @@ impl<Tab> DockArea<'_, Tab> {
                 ui,
                 style,
                 allowed_splits,
-                allowed_in_window,
+                windows_allowed,
+                tabs_allowed,
                 window_bounds,
             ),
             (OverlayType::Widgets, false) => drag_state.resolve_icon_based(
                 ui,
                 style,
                 allowed_splits,
-                allowed_in_window,
+                windows_allowed,
+                tabs_allowed,
                 window_bounds,
             ),
         }

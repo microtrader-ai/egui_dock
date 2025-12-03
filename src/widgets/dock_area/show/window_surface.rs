@@ -116,63 +116,64 @@ impl<Tab> DockArea<'_, Tab> {
 
         // Render the viewport content immediately instead of using deferred
         // This allows us to access &mut self
-        ui.ctx().show_viewport_immediate(
-            viewport_id,
-            viewport_builder,
-            |ctx, _class| {
+        ui.ctx()
+            .show_viewport_immediate(viewport_id, viewport_builder, |ctx, _class| {
                 // Handle close request
                 if ctx.input(|i| i.viewport().close_requested()) {
                     // We can't access self here, so we mark it via context data
                     ctx.data_mut(|d| {
-                        d.insert_temp(
-                            egui::Id::new("viewport_close_request"),
-                            Some(surf_index),
-                        );
+                        d.insert_temp(egui::Id::new("viewport_close_request"), Some(surf_index));
                     });
                 }
 
-                egui::CentralPanel::default()
-                    .frame(frame)
-                    .show(ctx, |ui| {
-                        // Fade inner ui (if necessary)
-                        if fade_factor != 1.0 {
-                            fade_visuals(ui.visuals_mut(), fade_factor);
-                        }
+                egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+                    // Fade inner ui (if necessary)
+                    if fade_factor != 1.0 {
+                        fade_visuals(ui.visuals_mut(), fade_factor);
+                    }
 
-                        if minimized {
-                            self.minimized_body(
-                                ui,
-                                surf_index,
-                                _fade_style.map(|(style, _surface)| style),
-                                title.clone(),
-                                tab_count,
-                            )
-                        } else {
-                            // For single-tab windows, show content directly without tab bar
-                            if tab_count == 1 {
-                                let node_id = self.dock_state[surf_index]
-                                    .focused_leaf()
-                                    .unwrap_or_else(|| {
-                                        for node_index in self.dock_state[surf_index].breadth_first_index_iter() {
-                                            if self.dock_state[surf_index][node_index].is_leaf() {
-                                                return node_index;
-                                            }
+                    if minimized {
+                        self.minimized_body(
+                            ui,
+                            surf_index,
+                            _fade_style.map(|(style, _surface)| style),
+                            title.clone(),
+                            tab_count,
+                        )
+                    } else {
+                        // For single-tab windows, show content directly without tab bar
+                        if tab_count == 1 {
+                            let node_id = self.dock_state[surf_index]
+                                .focused_leaf()
+                                .unwrap_or_else(|| {
+                                    for node_index in
+                                        self.dock_state[surf_index].breadth_first_index_iter()
+                                    {
+                                        if self.dock_state[surf_index][node_index].is_leaf() {
+                                            return node_index;
                                         }
-                                        unreachable!("a window surface should never be empty")
-                                    });
+                                    }
+                                    unreachable!("a window surface should never be empty")
+                                });
 
-                                if let Some(leaf) = self.dock_state[surf_index][node_id].get_leaf_mut() {
-                                    let tab = &mut leaf.tabs[leaf.active.0];
-                                    tab_viewer.ui(ui, tab);
-                                }
-                            } else {
-                                // Multiple tabs: show normal tree with tab bar
-                                self.render_nodes(ui, tab_viewer, state, surf_index, _fade_style.map(|(style, factor)| (style, factor)));
+                            if let Some(leaf) = self.dock_state[surf_index][node_id].get_leaf_mut()
+                            {
+                                let tab = &mut leaf.tabs[leaf.active.0];
+                                tab_viewer.ui(ui, tab);
                             }
+                        } else {
+                            // Multiple tabs: show normal tree with tab bar
+                            self.render_nodes(
+                                ui,
+                                tab_viewer,
+                                state,
+                                surf_index,
+                                _fade_style.map(|(style, factor)| (style, factor)),
+                            );
                         }
-                    });
-            },
-        );
+                    }
+                });
+            });
 
         // Check for close request
         if let Some(Some(close_surface)) = ui.ctx().data_mut(|d| {

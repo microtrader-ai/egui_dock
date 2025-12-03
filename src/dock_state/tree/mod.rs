@@ -36,7 +36,7 @@ use std::{
     slice::{Iter, IterMut},
 };
 
-use crate::SurfaceIndex;
+use crate::{AllowedDrops, SurfaceIndex};
 
 // ----------------------------------------------------------------------------
 
@@ -170,7 +170,8 @@ impl<Tab> Tree<Tab> {
     /// Creates a new [`Tree`] with given `Vec` of `Tab`s in its root node.
     #[inline(always)]
     pub fn new(tabs: Vec<Tab>) -> Self {
-        let root = Node::leaf_with(tabs);
+        let mut root = Node::leaf_with(tabs);
+        root.ensure_family_id();
         Self {
             nodes: vec![root],
             focused_node: None,
@@ -493,7 +494,17 @@ impl<Tab> Tree<Tab> {
         fraction: f32,
         new: Node<Tab>,
     ) -> [NodeIndex; 2] {
-        let old = self[parent].split(split, fraction);
+        let family_id = self[parent].ensure_family_id();
+        let allowed_drops = self[parent]
+            .allowed_drops()
+            .cloned()
+            .unwrap_or_else(AllowedDrops::all);
+        let mut old = self[parent].split(split, fraction);
+        let mut new = new;
+        old.set_family_id(family_id.clone());
+        new.set_family_id(family_id.clone());
+        old.set_allowed_drops(allowed_drops.clone());
+        new.set_allowed_drops(allowed_drops.clone());
         assert!(old.is_leaf() || old.is_parent());
         assert_ne!(new.tabs_count(), 0);
         // Resize vector to fit the new size of the binary tree.
@@ -690,6 +701,7 @@ impl<Tab> Tree<Tab> {
                 }
                 Node::Empty => {
                     *node = Node::leaf(tab);
+                    self.ensure_family_for_leaf(NodeIndex(index));
                     self.focused_node = Some(NodeIndex(index));
                     return;
                 }
@@ -698,6 +710,7 @@ impl<Tab> Tree<Tab> {
         }
         assert!(self.nodes.is_empty());
         self.nodes.push(Node::leaf_with(vec![tab]));
+        self.ensure_family_for_leaf(NodeIndex(0));
         self.focused_node = Some(NodeIndex(0));
     }
 
@@ -723,11 +736,13 @@ impl<Tab> Tree<Tab> {
             Some(node) => {
                 if self.nodes.is_empty() {
                     self.nodes.push(Node::leaf(tab));
+                    self.ensure_family_for_leaf(NodeIndex::root());
                     self.focused_node = Some(NodeIndex::root());
                 } else {
                     match &mut self[node] {
                         Node::Empty => {
                             self[node] = Node::leaf(tab);
+                            self.ensure_family_for_leaf(node);
                             self.focused_node = Some(node);
                         }
                         Node::Leaf(leaf) => {
@@ -743,6 +758,7 @@ impl<Tab> Tree<Tab> {
             None => {
                 if self.nodes.is_empty() {
                     self.nodes.push(Node::leaf(tab));
+                    self.ensure_family_for_leaf(NodeIndex::root());
                     self.focused_node = Some(NodeIndex::root());
                 } else {
                     self.push_to_first_leaf(tab);
@@ -924,6 +940,19 @@ impl<Tab> Tree<Tab> {
                 self.set_collapsed(true);
                 let root_index = NodeIndex::root();
                 self.set_collapsed_leaf_count(self[root_index].collapsed_leaf_count());
+            }
+        }
+    }
+
+    fn ensure_family_for_leaf(&mut self, node_index: NodeIndex) {
+        let inherited = node_index
+            .parent()
+            .and_then(|parent| self[parent].family_id().map(str::to_string));
+        if let Some(node) = self.nodes.get_mut(node_index.0) {
+            if let Some(id) = inherited {
+                node.set_family_id(id);
+            } else {
+                node.ensure_family_id();
             }
         }
     }

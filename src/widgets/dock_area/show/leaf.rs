@@ -240,10 +240,8 @@ impl<Tab> DockArea<'_, Tab> {
             );
             tabs_ui.spacing_mut().item_spacing = Vec2::ZERO;
 
-            let mut clip_rect = Rect::from_min_size(
-                tabbar_outer_rect.min + collapse_offset,
-                tabs_size,
-            );
+            let mut clip_rect =
+                Rect::from_min_size(tabbar_outer_rect.min + collapse_offset, tabs_size);
             tabs_ui.set_clip_rect(clip_rect);
 
             // Desired size for tabs in "expanded" mode.
@@ -321,8 +319,12 @@ impl<Tab> DockArea<'_, Tab> {
         };
 
         let tabs_start_primary = match position {
-            TabBarPosition::Top | TabBarPosition::Bottom => tabbar_outer_rect.left() + collapse_space,
-            TabBarPosition::Left | TabBarPosition::Right => tabbar_outer_rect.top() + collapse_space,
+            TabBarPosition::Top | TabBarPosition::Bottom => {
+                tabbar_outer_rect.left() + collapse_space
+            }
+            TabBarPosition::Left | TabBarPosition::Right => {
+                tabbar_outer_rect.top() + collapse_space
+            }
         };
         let tabs_end_primary = (tabs_start_primary + actual_primary).at_most(tail_start);
         let line_start = tabs_end_primary.min(tail_start);
@@ -430,7 +432,8 @@ impl<Tab> DockArea<'_, Tab> {
                         .id_salt((node_index, "tab_tail")),
                 );
                 // Paint background over tail to avoid tab overlap.
-                ui.painter().rect_filled(tail_rect, CornerRadius::ZERO, style.tab_bar.bg_fill);
+                ui.painter()
+                    .rect_filled(tail_rect, CornerRadius::ZERO, style.tab_bar.bg_fill);
                 tail_cb(tail_ui, surface_index, node_index, active_index);
             }
         }
@@ -547,7 +550,8 @@ impl<Tab> DockArea<'_, Tab> {
                     leaf.active == tab_index || is_being_dragged,
                     tab_viewer.title(&mut leaf.tabs[tab_index.0]),
                     tab_style.unwrap_or(style.tab.clone()),
-                    tab_viewer.is_closeable(&leaf.tabs[tab_index.0]) && (!is_last_tab || can_drag_last_tab), // Same logic for closing
+                    tab_viewer.is_closeable(&leaf.tabs[tab_index.0])
+                        && (!is_last_tab || can_drag_last_tab), // Same logic for closing
                 )
             };
 
@@ -633,8 +637,13 @@ impl<Tab> DockArea<'_, Tab> {
                 if self.tab_context_menus {
                     let eject_button =
                         Button::new(&self.dock_state.translations.tab_context_menu.eject_button);
-                    let move_to_main_button =
-                        Button::new(&self.dock_state.translations.tab_context_menu.move_to_main_button);
+                    let move_to_main_button = Button::new(
+                        &self
+                            .dock_state
+                            .translations
+                            .tab_context_menu
+                            .move_to_main_button,
+                    );
                     let close_button =
                         Button::new(&self.dock_state.translations.tab_context_menu.close_button);
 
@@ -970,7 +979,6 @@ impl<Tab> DockArea<'_, Tab> {
         fade_style: Option<&Style>,
         position: TabBarPosition,
     ) {
-
         let ui = &mut ui.new_child(
             UiBuilder::new()
                 .max_rect(rect)

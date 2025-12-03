@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use eframe::NativeOptions;
@@ -11,10 +11,11 @@ use egui::{
     vec2, CentralPanel, ComboBox, CornerRadius, Frame, Slider, TopBottomPanel, Ui, ViewportBuilder,
     WidgetText,
 };
+use uuid::Uuid;
 
 use egui_dock::tab_viewer::OnCloseResponse;
 use egui_dock::{
-    AllowedSplits, DockArea, DockState, NodeIndex, OverlayType, Style, SurfaceIndex,
+    AllowedDrops, AllowedSplits, DockArea, DockState, NodeIndex, OverlayType, Style, SurfaceIndex,
     TabBarPosition, TabInteractionStyle, TabViewer,
 };
 
@@ -133,10 +134,12 @@ impl TabViewer for MyContext {
                 if name.starts_with("Regular Tab") {
                     ui.label(format!("Content of {}. This is a regular tab.", name));
                 } else if name.starts_with("Fancy Tab") {
-                    ui.label(egui::RichText::new(format!("Content of {}. This tab is fancy!", name))
-                        .italics()
-                        .size(20.0)
-                        .color(egui::Color32::from_rgb(255, 128, 64)));
+                    ui.label(
+                        egui::RichText::new(format!("Content of {}. This tab is fancy!", name))
+                            .italics()
+                            .size(20.0)
+                            .color(egui::Color32::from_rgb(255, 128, 64)),
+                    );
                 } else {
                     ui.label(name);
                 }
@@ -203,11 +206,9 @@ impl TabViewer for MyContext {
     }
 
     fn allow_collapse(&self, _surface_index: SurfaceIndex, node_index: NodeIndex) -> bool {
-        // 右 1、右 2 都显示折叠按钮
+        // 右2显示折叠按钮，右1隐藏
         Self::is_descendant(node_index, self.bottom_root)
-            || Self::is_descendant(node_index, self.right_top)
     }
-
 }
 
 impl MyContext {
@@ -653,9 +654,10 @@ impl Default for MyApp {
         }
 
         // Left column: split horizontally into two leaves
-        let [left_top, left_bottom] = dock_state
-            .main_surface_mut()
-            .split_below(left_root, 0.5, vec!["Hierarchy".to_owned()]);
+        let [left_top, left_bottom] =
+            dock_state
+                .main_surface_mut()
+                .split_below(left_root, 0.5, vec!["Hierarchy".to_owned()]);
         // Add extra tabs to left_bottom for scrollbar testing.
         if let Some(leaf) = dock_state[SurfaceIndex::main()][left_bottom].get_leaf_mut() {
             for i in 0..10 {
@@ -668,6 +670,23 @@ impl Default for MyApp {
         dock_state[SurfaceIndex::main()][bottom_node].set_always_keep(true);
         dock_state[SurfaceIndex::main()][left_top].set_always_keep(true);
         dock_state[SurfaceIndex::main()][left_bottom].set_always_keep(true);
+        // 右1 只允许同族移动：赋予独立 family_id，使其与其他节点不同
+        let right_family = Uuid::new_v4().to_string();
+        dock_state[SurfaceIndex::main()][right_top].set_family_id(right_family);
+        // 右1 允许左右和浮动，禁用上下
+        dock_state[SurfaceIndex::main()][right_top].set_allowed_drops(AllowedDrops {
+            left: true,
+            right: true,
+            top: false,
+            bottom: false,
+            float: true,
+            tabs: true,
+        });
+        // 右2 禁用浮动（其余保持默认）
+        dock_state[SurfaceIndex::main()][bottom_node].set_allowed_drops(AllowedDrops {
+            float: false,
+            ..AllowedDrops::all()
+        });
 
         let mut open_tabs = HashSet::new();
 
@@ -681,7 +700,7 @@ impl Default for MyApp {
 
         // Set node-level positions (no tab-level positions)
         let mut node_positions = HashMap::new();
-        node_positions.insert(left_top, TabBarPosition::Left);    // Inspector node
+        node_positions.insert(left_top, TabBarPosition::Left); // Inspector node
         node_positions.insert(left_bottom, TabBarPosition::Left); // Hierarchy + extras node
         node_positions.insert(bottom_node, TabBarPosition::Bottom);
         node_positions.insert(right_top, tab_bar_position);
@@ -764,146 +783,190 @@ impl eframe::App for MyApp {
             // to set inner margins to 0.
             .frame(Frame::central_panel(&ctx.style()).inner_margin(0.))
             .show(ctx, |ui| {
-        let style = self
-            .context
-            .style
-            .get_or_insert_with(|| {
-                let mut style = Style::from_egui(ui.style());
-                style.tab_bar.position = self.context.tab_bar_position;
-                // 右1/右2 纵向分隔最小保留 5px
-                style.separator.extra = 5.0;
-                style.separator.color_hovered = Color32::from_rgb(52,118,207);
-                style.separator.color_dragged = Color32::from_rgb(52,118,207);
-                style.separator.width = 2.0;
-                // 右1 尾部空白 25px
-                style.tab_bar.tail_padding = 25.0;
-                style.tab_bar.auto_tail = true;
-                style.tab_bar.fill_tab_bar = false; // auto_tail 和 fill_tab_bar 互斥
-                // 水平分割最多 50%，垂直不限制
-                style.separator.max_fraction = Some(vec2(0.5, 1.0));
-                style
-            });
-        self.context.tab_bar_position = style.tab_bar.position;
-        let style = style.clone();
-        let tail_target = self.context.right_top;
-        let tail_titles: Arc<Vec<String>> = self.tree[SurfaceIndex::main()][tail_target]
-            .get_leaf()
-            .map(|leaf| Arc::new(leaf.tabs.clone()))
-            .unwrap_or_else(|| Arc::new(Vec::new()));
+                let style = self.context.style.get_or_insert_with(|| {
+                    let mut style = Style::from_egui(ui.style());
+                    style.tab_bar.position = self.context.tab_bar_position;
+                    // 右1/右2 纵向分隔最小保留 5px
+                    style.separator.extra = 5.0;
+                    style.separator.color_hovered = Color32::from_rgb(52, 118, 207);
+                    style.separator.color_dragged = Color32::from_rgb(52, 118, 207);
+                    style.separator.width = 2.0;
+                    // 右1 尾部空白 25px
+                    style.tab_bar.tail_padding = 25.0;
+                    style.tab_bar.auto_tail = true;
+                    style.tab_bar.fill_tab_bar = false; // auto_tail 和 fill_tab_bar 互斥
+                                                        // 水平分割最多 50%，垂直不限制
+                    style.separator.max_fraction = Some(vec2(0.5, 1.0));
+                    style
+                });
+                self.context.tab_bar_position = style.tab_bar.position;
+                let style = style.clone();
+                let tail_target = self.context.right_top;
+                let tail_titles: Arc<Vec<String>> = self.tree[SurfaceIndex::main()][tail_target]
+                    .get_leaf()
+                    .map(|leaf| Arc::new(leaf.tabs.clone()))
+                    .unwrap_or_else(|| Arc::new(Vec::new()));
 
-        DockArea::new(&mut self.tree)
-            .style(style)
-            .show_close_buttons(self.context.show_close_buttons)
-            .draggable_tabs(self.context.draggable_tabs)
-            .show_tab_name_on_hover(self.context.show_tab_name_on_hover)
-            .allowed_splits(self.context.allowed_splits)
-            .show_leaf_close_all_buttons(self.context.show_leaf_close_all)
-            // 使用 TabViewer::allow_collapse 控制各区域折叠按钮
-            .show_leaf_collapse_buttons(true)
-            .show_secondary_button_hint(self.context.show_secondary_button_hint)
-            .secondary_button_on_modifier(self.context.secondary_button_on_modifier)
-            .secondary_button_context_menu(self.context.secondary_button_context_menu)
-            .tab_bar_tail_padding({
-                let titles = tail_titles.clone();
-                move |surface, node, tab| {
-                    if surface == SurfaceIndex::main() && node == tail_target {
-                        if let Some(current) = titles.get(tab.0) {
-                            if current == "Simple Demo" {
-                                return 60.0;
+                DockArea::new(&mut self.tree)
+                    .style(style)
+                    .show_close_buttons(self.context.show_close_buttons)
+                    .draggable_tabs(self.context.draggable_tabs)
+                    .show_tab_name_on_hover(self.context.show_tab_name_on_hover)
+                    .allowed_splits(self.context.allowed_splits)
+                    .show_leaf_close_all_buttons(self.context.show_leaf_close_all)
+                    // 使用 TabViewer::allow_collapse 控制各区域折叠按钮
+                    .show_leaf_collapse_buttons(true)
+                    .show_secondary_button_hint(self.context.show_secondary_button_hint)
+                    .secondary_button_on_modifier(self.context.secondary_button_on_modifier)
+                    .secondary_button_context_menu(self.context.secondary_button_context_menu)
+                    .tab_bar_tail_padding({
+                        let titles = tail_titles.clone();
+                        move |surface, node, tab| {
+                            if surface == SurfaceIndex::main() && node == tail_target {
+                                if let Some(current) = titles.get(tab.0) {
+                                    if current == "Simple Demo" {
+                                        return 60.0;
+                                    }
+                                }
+                                40.0
+                            } else {
+                                0.0
                             }
                         }
-                        40.0
-                    } else {
-                        0.0
-                    }
-                }
-            })
-            .tab_bar_tail_content({
-                let titles = tail_titles.clone();
-                move |ui, surface, node, tab| {
-                    if surface == SurfaceIndex::main() && node == tail_target {
-                        let label = titles.get(tab.0).map(|s| s.as_str()).unwrap_or_default();
-                        ui.horizontal(|ui| {
-                            if label == "Simple Demo" {
-                                let add_response = ui.small_button("+");
-                                // Show popup menu when + button is clicked
-                                let popup_id = ui.id().with("custom_add_popup");
-                                if add_response.clicked() {
-                                    ui.memory_mut(|mem| mem.toggle_popup(popup_id));
-                                }
-                                egui::popup_below_widget(ui, popup_id, &add_response, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-                                    ui.set_min_width(120.0);
-                                    ui.style_mut().visuals.button_frame = false;
+                    })
+                    .tab_bar_tail_content({
+                        let titles = tail_titles.clone();
+                        move |ui, surface, node, tab| {
+                            if surface == SurfaceIndex::main() && node == tail_target {
+                                let label =
+                                    titles.get(tab.0).map(|s| s.as_str()).unwrap_or_default();
+                                ui.horizontal(|ui| {
+                                    if label == "Simple Demo" {
+                                        let add_response = ui.small_button("+");
+                                        // Show popup menu when + button is clicked
+                                        let popup_id = ui.id().with("custom_add_popup");
+                                        if add_response.clicked() {
+                                            ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+                                        }
+                                        egui::popup_below_widget(
+                                            ui,
+                                            popup_id,
+                                            &add_response,
+                                            egui::PopupCloseBehavior::CloseOnClickOutside,
+                                            |ui| {
+                                                ui.set_min_width(120.0);
+                                                ui.style_mut().visuals.button_frame = false;
 
-                                    if ui.button("Regular Tab").clicked() {
-                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Regular"))));
-                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                    }
+                                                if ui.button("Regular Tab").clicked() {
+                                                    ui.ctx().data_mut(|d| {
+                                                        d.insert_temp(
+                                                            egui::Id::new("add_tab_request"),
+                                                            Some((surface, node, "Regular")),
+                                                        )
+                                                    });
+                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                                }
 
-                                    if ui.button("Fancy Tab").clicked() {
-                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Fancy"))));
-                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                    }
+                                                if ui.button("Fancy Tab").clicked() {
+                                                    ui.ctx().data_mut(|d| {
+                                                        d.insert_temp(
+                                                            egui::Id::new("add_tab_request"),
+                                                            Some((surface, node, "Fancy")),
+                                                        )
+                                                    });
+                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                                }
 
-                                    if ui.button("Inspector Tab").clicked() {
-                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Inspector"))));
-                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                    }
-                                });
+                                                if ui.button("Inspector Tab").clicked() {
+                                                    ui.ctx().data_mut(|d| {
+                                                        d.insert_temp(
+                                                            egui::Id::new("add_tab_request"),
+                                                            Some((surface, node, "Inspector")),
+                                                        )
+                                                    });
+                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                                }
+                                            },
+                                        );
 
-                                if ui.small_button("-").clicked() {
-                                    // Handle remove action if needed
-                                }
-                            } else {
-                                let add_response = ui.small_button("+");
-                                let popup_id = ui.id().with("custom_add_popup");
-                                if add_response.clicked() {
-                                    ui.memory_mut(|mem| mem.toggle_popup(popup_id));
-                                }
-                                egui::popup_below_widget(ui, popup_id, &add_response, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-                                    ui.set_min_width(120.0);
-                                    ui.style_mut().visuals.button_frame = false;
+                                        if ui.small_button("-").clicked() {
+                                            // Handle remove action if needed
+                                        }
+                                    } else {
+                                        let add_response = ui.small_button("+");
+                                        let popup_id = ui.id().with("custom_add_popup");
+                                        if add_response.clicked() {
+                                            ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+                                        }
+                                        egui::popup_below_widget(
+                                            ui,
+                                            popup_id,
+                                            &add_response,
+                                            egui::PopupCloseBehavior::CloseOnClickOutside,
+                                            |ui| {
+                                                ui.set_min_width(120.0);
+                                                ui.style_mut().visuals.button_frame = false;
 
-                                    if ui.button("Regular Tab").clicked() {
-                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Regular"))));
-                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                    }
+                                                if ui.button("Regular Tab").clicked() {
+                                                    ui.ctx().data_mut(|d| {
+                                                        d.insert_temp(
+                                                            egui::Id::new("add_tab_request"),
+                                                            Some((surface, node, "Regular")),
+                                                        )
+                                                    });
+                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                                }
 
-                                    if ui.button("Fancy Tab").clicked() {
-                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Fancy"))));
-                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                    }
+                                                if ui.button("Fancy Tab").clicked() {
+                                                    ui.ctx().data_mut(|d| {
+                                                        d.insert_temp(
+                                                            egui::Id::new("add_tab_request"),
+                                                            Some((surface, node, "Fancy")),
+                                                        )
+                                                    });
+                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                                }
 
-                                    if ui.button("Inspector Tab").clicked() {
-                                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("add_tab_request"), Some((surface, node, "Inspector"))));
-                                        ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                                if ui.button("Inspector Tab").clicked() {
+                                                    ui.ctx().data_mut(|d| {
+                                                        d.insert_temp(
+                                                            egui::Id::new("add_tab_request"),
+                                                            Some((surface, node, "Inspector")),
+                                                        )
+                                                    });
+                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
+                                                }
+                                            },
+                                        );
                                     }
                                 });
                             }
-                        });
+                        }
+                    })
+                    .show_inside(ui, &mut self.context);
+
+                // Handle add tab request from tail_content button
+                if let Some(Some((surface, node, tab_type))) = ctx.data_mut(|d| {
+                    d.remove_temp::<Option<(SurfaceIndex, NodeIndex, &str)>>(egui::Id::new(
+                        "add_tab_request",
+                    ))
+                }) {
+                    if surface == SurfaceIndex::main() && node == self.context.right_top {
+                        // Add a new tab based on type
+                        self.context.next_tab_id += 1;
+                        let new_tab = match tab_type {
+                            "Regular" => format!("Regular Tab {}", self.context.next_tab_id),
+                            "Fancy" => format!("Fancy Tab {}", self.context.next_tab_id),
+                            "Inspector" => format!("Inspector {}", self.context.next_tab_id),
+                            _ => format!("New Tab {}", self.context.next_tab_id),
+                        };
+                        self.context.open_tabs.insert(new_tab.clone());
+                        if let Some(leaf) = self.tree[surface][node].get_leaf_mut() {
+                            leaf.append_tab(new_tab);
+                        }
                     }
                 }
-            })
-            .show_inside(ui, &mut self.context);
-
-        // Handle add tab request from tail_content button
-        if let Some(Some((surface, node, tab_type))) = ctx.data_mut(|d| d.remove_temp::<Option<(SurfaceIndex, NodeIndex, &str)>>(egui::Id::new("add_tab_request"))) {
-            if surface == SurfaceIndex::main() && node == self.context.right_top {
-                // Add a new tab based on type
-                self.context.next_tab_id += 1;
-                let new_tab = match tab_type {
-                    "Regular" => format!("Regular Tab {}", self.context.next_tab_id),
-                    "Fancy" => format!("Fancy Tab {}", self.context.next_tab_id),
-                    "Inspector" => format!("Inspector {}", self.context.next_tab_id),
-                    _ => format!("New Tab {}", self.context.next_tab_id),
-                };
-                self.context.open_tabs.insert(new_tab.clone());
-                if let Some(leaf) = self.tree[surface][node].get_leaf_mut() {
-                    leaf.append_tab(new_tab);
-                }
-            }
-        }
-    });
+            });
     }
 }
 

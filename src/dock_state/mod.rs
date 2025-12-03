@@ -17,7 +17,9 @@ pub use window_state::WindowState;
 
 use egui::Rect;
 
-use crate::{Node, NodeIndex, Split, TabDestination, TabIndex, TabInsert, Translations, Tree};
+use crate::{
+    AllowedDrops, Node, NodeIndex, Split, TabDestination, TabIndex, TabInsert, Translations, Tree,
+};
 
 /// The heart of `egui_dock`.
 ///
@@ -266,6 +268,15 @@ impl<Tab> DockState<Tab> {
         (src_surface, src_node, src_tab): (SurfaceIndex, NodeIndex, TabIndex),
         dst_tab: impl Into<TabDestination>,
     ) {
+        let (src_family_id, src_allowed_drops) = {
+            let node = &mut self[src_surface][src_node];
+            (
+                node.ensure_family_id(),
+                node.allowed_drops()
+                    .cloned()
+                    .unwrap_or_else(AllowedDrops::all),
+            )
+        };
         match dst_tab.into() {
             TabDestination::Window(position) => {
                 self.detach_tab((src_surface, src_node, src_tab), position);
@@ -294,7 +305,12 @@ impl<Tab> DockState<Tab> {
             TabDestination::EmptySurface(dst_surface) => {
                 assert!(self[dst_surface].is_empty());
                 let tab = self[src_surface][src_node].remove_tab(src_tab).unwrap();
-                self[dst_surface] = Tree::new(vec![tab])
+                let mut tree = Tree::new(vec![tab]);
+                if let Some(root) = tree.root_node_mut() {
+                    root.set_family_id(src_family_id.clone());
+                    root.set_allowed_drops(src_allowed_drops.clone());
+                }
+                self[dst_surface] = tree;
             }
         }
         if self[src_surface][src_node].is_leaf() && self[src_surface][src_node].tabs_count() == 0 {
@@ -313,17 +329,33 @@ impl<Tab> DockState<Tab> {
         window_rect: Rect,
     ) -> SurfaceIndex {
         // Remember the original node ID and tab index for "Move to Main Window" feature (before removing tab)
-        let (original_node_id, original_tab_index) = if src_surface.is_main() {
-            let node_id = self[src_surface][src_node].get_leaf_mut()
-                .map(|leaf| leaf.get_or_create_id());
-            (node_id, Some(src_tab.0))
-        } else {
-            (None, None)
-        };
+        let (original_node_id, original_tab_index, family_id, allowed_drops) =
+            if src_surface.is_main() {
+                let node = &mut self[src_surface][src_node];
+                let node_id = node.get_leaf_mut().map(|leaf| leaf.get_or_create_id());
+                let family_id = node.ensure_family_id();
+                let allowed_drops = node
+                    .allowed_drops()
+                    .cloned()
+                    .unwrap_or_else(AllowedDrops::all);
+                (node_id, Some(src_tab.0), family_id, allowed_drops)
+            } else {
+                let node = &mut self[src_surface][src_node];
+                let family_id = node.ensure_family_id();
+                let allowed_drops = node
+                    .allowed_drops()
+                    .cloned()
+                    .unwrap_or_else(AllowedDrops::all);
+                (None, None, family_id, allowed_drops)
+            };
 
         // Remove the tab from the tree and it add to a new window.
         let tab = self[src_surface][src_node].remove_tab(src_tab).unwrap();
         let surface_index = self.add_window(vec![tab]);
+        if let Some(root) = self[surface_index].root_node_mut() {
+            root.set_family_id(family_id.clone());
+            root.set_allowed_drops(allowed_drops.clone());
+        }
 
         // Set the window size and position to match `window_rect`.
         let state = self.get_window_state_mut(surface_index).unwrap();

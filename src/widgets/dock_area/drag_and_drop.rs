@@ -178,6 +178,7 @@ impl DragDropState {
         style: &Style,
         allowed_splits: AllowedSplits,
         windows_allowed: bool,
+        tabs_allowed: bool,
         window_bounds: Rect,
     ) -> Option<TabDestination> {
         assert!(!self.is_on_title_bar());
@@ -197,7 +198,7 @@ impl DragDropState {
         let center = rect.center();
         let rect = Rect::from_center_size(center, Vec2::splat(shortest_side));
 
-        if button_ui(rect, ui, &mut hovering_buttons, pointer, style, None) {
+        if tabs_allowed && button_ui(rect, ui, &mut hovering_buttons, pointer, style, None) {
             match self.hover.dst {
                 TreeComponent::Node(surface, node) => {
                     destination = Some(TabDestination::Node(surface, node, TabInsert::Append))
@@ -259,6 +260,7 @@ impl DragDropState {
         style: &Style,
         allowed_splits: AllowedSplits,
         windows_allowed: bool,
+        tabs_allowed: bool,
         window_bounds: Rect,
     ) -> Option<TabDestination> {
         // If windows are not allowed, any hover over a window is immediately disallowed.
@@ -269,6 +271,9 @@ impl DragDropState {
 
         // Deals with hovers over tab bar and tab titles.
         if let Some(rect) = self.hover.tab {
+            if !tabs_allowed {
+                return None;
+            }
             draw_drop_rect(rect, ui, style);
             let target_lock_state = if rect.contains(self.pointer) {
                 LockState::SoftLock
@@ -303,11 +308,11 @@ impl DragDropState {
 
             // Find out what kind of tab insertion (if any) should be used to move this widget.
             if center_drop_rect.contains(a_pos) {
-                (Some(TabInsert::Append), Rect::EVERYTHING)
+                (tabs_allowed.then_some(TabInsert::Append), Rect::EVERYTHING)
             } else if window_drop_rect.contains(a_pos) {
                 match windows_allowed {
                     true => (None, Rect::NOTHING),
-                    false => (Some(TabInsert::Append), Rect::EVERYTHING),
+                    false => (tabs_allowed.then_some(TabInsert::Append), Rect::EVERYTHING),
                 }
             } else {
                 // Assessing if were above/below the two linear functions x-y=0 and -x-y=0 determines

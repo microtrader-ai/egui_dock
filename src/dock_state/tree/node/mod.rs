@@ -1,5 +1,6 @@
-use crate::{Split, TabIndex};
+use crate::{AllowedDrops, Split, TabIndex};
 use egui::Rect;
+use uuid::Uuid;
 
 mod leaf;
 mod split;
@@ -48,7 +49,7 @@ impl<Tab> Node<Tab> {
 
     /// Constructs a leaf node with a given list of `tabs`.
     #[inline(always)]
-    pub const fn leaf_with(tabs: Vec<Tab>) -> Self {
+    pub fn leaf_with(tabs: Vec<Tab>) -> Self {
         Self::Leaf(LeafNode::new(tabs))
     }
 
@@ -144,18 +145,30 @@ impl<Tab> Node<Tab> {
     pub fn split(&mut self, split: Split, fraction: f32) -> Self {
         assert!((0.0..=1.0).contains(&fraction));
         let rect = Rect::NOTHING;
+        let family_id = self
+            .family_id()
+            .map(str::to_string)
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
+        let allowed_drops = self
+            .allowed_drops()
+            .cloned()
+            .unwrap_or_else(AllowedDrops::all);
         let src = match split {
             Split::Left | Split::Right => Node::Horizontal(SplitNode::new(
                 rect,
                 fraction,
                 self.is_collapsed(),
                 self.collapsed_leaf_count(),
+                allowed_drops.clone(),
+                Some(family_id.clone()),
             )),
             Split::Above | Split::Below => Node::Vertical(SplitNode::new(
                 rect,
                 fraction,
                 self.is_collapsed(),
                 self.collapsed_leaf_count(),
+                allowed_drops.clone(),
+                Some(family_id.clone()),
             )),
         };
         std::mem::replace(self, src)
@@ -341,6 +354,8 @@ impl<Tab> Node<Tab> {
                     hidden,
                     id,
                     always_keep,
+                    allowed_drops,
+                    family_id,
                 } = leaf;
                 let tabs: Vec<_> = tabs.iter().filter_map(function).collect();
                 if tabs.is_empty() {
@@ -356,6 +371,8 @@ impl<Tab> Node<Tab> {
                         hidden: *hidden,
                         id: id.clone(),
                         always_keep: *always_keep,
+                        allowed_drops: allowed_drops.clone(),
+                        family_id: family_id.clone(),
                     })
                 }
             }
@@ -414,6 +431,65 @@ impl<Tab> Node<Tab> {
             leaf.always_keep()
         } else {
             false
+        }
+    }
+
+    /// Get the drop permissions for this node if present.
+    #[inline]
+    pub fn allowed_drops(&self) -> Option<&AllowedDrops> {
+        match self {
+            Node::Leaf(leaf) => Some(&leaf.allowed_drops),
+            Node::Horizontal(split) | Node::Vertical(split) => Some(&split.allowed_drops),
+            Node::Empty => None,
+        }
+    }
+
+    /// Set the drop permissions for this node.
+    #[inline]
+    pub fn set_allowed_drops(&mut self, allowed: AllowedDrops) {
+        match self {
+            Node::Leaf(leaf) => leaf.allowed_drops = allowed,
+            Node::Horizontal(split) | Node::Vertical(split) => split.allowed_drops = allowed,
+            Node::Empty => (),
+        }
+    }
+
+    /// Get the family id for this node, if any.
+    #[inline]
+    pub fn family_id(&self) -> Option<&str> {
+        match self {
+            Node::Leaf(leaf) => leaf.family_id.as_deref(),
+            Node::Horizontal(split) | Node::Vertical(split) => split.family_id.as_deref(),
+            Node::Empty => None,
+        }
+    }
+
+    /// Set the family id for this node.
+    #[inline]
+    pub fn set_family_id(&mut self, id: impl Into<String>) {
+        let id = Some(id.into());
+        match self {
+            Node::Leaf(leaf) => leaf.family_id = id,
+            Node::Horizontal(split) | Node::Vertical(split) => split.family_id = id,
+            Node::Empty => (),
+        }
+    }
+
+    /// Get or create the family id for this node.
+    #[inline]
+    pub fn ensure_family_id(&mut self) -> String {
+        match self {
+            Node::Leaf(leaf) => leaf.get_or_create_family_id(),
+            Node::Horizontal(split) | Node::Vertical(split) => {
+                if let Some(id) = &split.family_id {
+                    id.clone()
+                } else {
+                    let id = Uuid::new_v4().to_string();
+                    split.family_id = Some(id.clone());
+                    id
+                }
+            }
+            Node::Empty => Uuid::new_v4().to_string(),
         }
     }
 }

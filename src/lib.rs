@@ -233,6 +233,7 @@
 #![warn(missing_docs)]
 #![forbid(unsafe_code)]
 
+pub use allowed_drops::AllowedDrops;
 #[allow(deprecated)]
 pub use dock_state::*;
 pub use egui;
@@ -250,4 +251,5 @@ pub mod style;
 /// Widgets provided by the library.
 pub mod widgets;
 
+mod allowed_drops;
 mod utils;
