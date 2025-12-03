@@ -808,7 +808,14 @@ impl eframe::App for MyApp {
                 self.context.tab_bar_position = style.tab_bar.position;
                 let style = style.clone();
                 let tail_target = self.context.right_top;
-                let tail_titles: Arc<Vec<String>> = self.tree[SurfaceIndex::main()][tail_target]
+                let main_tree = &self.tree[SurfaceIndex::main()];
+                let actual_tail =
+                    if tail_target.0 < main_tree.len() && main_tree[tail_target].is_leaf() {
+                        tail_target
+                    } else {
+                        NodeIndex::root()
+                    };
+                let tail_titles: Arc<Vec<String>> = self.tree[SurfaceIndex::main()][actual_tail]
                     .get_leaf()
                     .map(|leaf| Arc::new(leaf.tabs.clone()))
                     .unwrap_or_else(|| Arc::new(Vec::new()));
@@ -828,7 +835,7 @@ impl eframe::App for MyApp {
                     .tab_bar_tail_padding({
                         let titles = tail_titles.clone();
                         move |surface, node, tab| {
-                            if surface == SurfaceIndex::main() && node == tail_target {
+                            if surface == SurfaceIndex::main() && node == actual_tail {
                                 if let Some(current) = titles.get(tab.0) {
                                     if current == "Simple Demo" {
                                         return 60.0;
@@ -843,7 +850,7 @@ impl eframe::App for MyApp {
                     .tab_bar_tail_content({
                         let titles = tail_titles.clone();
                         move |ui, surface, node, tab| {
-                            if surface == SurfaceIndex::main() && node == tail_target {
+                            if surface == SurfaceIndex::main() && node == actual_tail {
                                 let label =
                                     titles.get(tab.0).map(|s| s.as_str()).unwrap_or_default();
                                 ui.horizontal(|ui| {
