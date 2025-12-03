@@ -816,6 +816,8 @@ impl eframe::App for MyApp {
                     .map(|leaf| Arc::new(leaf.tabs.clone()))
                     .unwrap_or_else(|| Arc::new(Vec::new()));
 
+                let fullscreen_active = self.tree.fullscreen_active();
+
                 DockArea::new(&mut self.tree)
                     .style(style)
                     .show_close_buttons(self.context.show_close_buttons)
@@ -829,15 +831,9 @@ impl eframe::App for MyApp {
                     .secondary_button_on_modifier(self.context.secondary_button_on_modifier)
                     .secondary_button_context_menu(self.context.secondary_button_context_menu)
                     .tab_bar_tail_padding({
-                        let titles = tail_titles.clone();
-                        move |surface, node, tab| {
+                        move |surface, node, _tab| {
                             if surface == SurfaceIndex::main() && node == actual_tail {
-                                if let Some(current) = titles.get(tab.0) {
-                                    if current == "Simple Demo" {
-                                        return 60.0;
-                                    }
-                                }
-                                40.0
+                                120.0
                             } else {
                                 0.0
                             }
@@ -850,103 +846,35 @@ impl eframe::App for MyApp {
                                 let label =
                                     titles.get(tab.0).map(|s| s.as_str()).unwrap_or_default();
                                 ui.horizontal(|ui| {
-                                    if label == "Simple Demo" {
-                                        let add_response = ui.small_button("+");
-                                        // Show popup menu when + button is clicked
-                                        let popup_id = ui.id().with("custom_add_popup");
-                                        if add_response.clicked() {
-                                            ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+                                    // 全屏时展示更多按钮，普通状态精简
+                                    if ui.button("Info").clicked() {
+                                        ui.label(format!("当前: {label}"));
+                                    }
+                                    if ui.button("Add").clicked() {
+                                        ui.ctx().data_mut(|d| {
+                                            d.insert_temp(
+                                                egui::Id::new("add_tab_request"),
+                                                Some((surface, node, "Regular")),
+                                            )
+                                        });
+                                    }
+                                    if fullscreen_active {
+                                        if ui.button("Fancy").clicked() {
+                                            ui.ctx().data_mut(|d| {
+                                                d.insert_temp(
+                                                    egui::Id::new("add_tab_request"),
+                                                    Some((surface, node, "Fancy")),
+                                                )
+                                            });
                                         }
-                                        egui::popup_below_widget(
-                                            ui,
-                                            popup_id,
-                                            &add_response,
-                                            egui::PopupCloseBehavior::CloseOnClickOutside,
-                                            |ui| {
-                                                ui.set_min_width(120.0);
-                                                ui.style_mut().visuals.button_frame = false;
-
-                                                if ui.button("Regular Tab").clicked() {
-                                                    ui.ctx().data_mut(|d| {
-                                                        d.insert_temp(
-                                                            egui::Id::new("add_tab_request"),
-                                                            Some((surface, node, "Regular")),
-                                                        )
-                                                    });
-                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                                }
-
-                                                if ui.button("Fancy Tab").clicked() {
-                                                    ui.ctx().data_mut(|d| {
-                                                        d.insert_temp(
-                                                            egui::Id::new("add_tab_request"),
-                                                            Some((surface, node, "Fancy")),
-                                                        )
-                                                    });
-                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                                }
-
-                                                if ui.button("Inspector Tab").clicked() {
-                                                    ui.ctx().data_mut(|d| {
-                                                        d.insert_temp(
-                                                            egui::Id::new("add_tab_request"),
-                                                            Some((surface, node, "Inspector")),
-                                                        )
-                                                    });
-                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                                }
-                                            },
-                                        );
-
-                                        if ui.small_button("-").clicked() {
-                                            // Handle remove action if needed
+                                        if ui.button("Inspector").clicked() {
+                                            ui.ctx().data_mut(|d| {
+                                                d.insert_temp(
+                                                    egui::Id::new("add_tab_request"),
+                                                    Some((surface, node, "Inspector")),
+                                                )
+                                            });
                                         }
-                                    } else {
-                                        let add_response = ui.small_button("+");
-                                        let popup_id = ui.id().with("custom_add_popup");
-                                        if add_response.clicked() {
-                                            ui.memory_mut(|mem| mem.toggle_popup(popup_id));
-                                        }
-                                        egui::popup_below_widget(
-                                            ui,
-                                            popup_id,
-                                            &add_response,
-                                            egui::PopupCloseBehavior::CloseOnClickOutside,
-                                            |ui| {
-                                                ui.set_min_width(120.0);
-                                                ui.style_mut().visuals.button_frame = false;
-
-                                                if ui.button("Regular Tab").clicked() {
-                                                    ui.ctx().data_mut(|d| {
-                                                        d.insert_temp(
-                                                            egui::Id::new("add_tab_request"),
-                                                            Some((surface, node, "Regular")),
-                                                        )
-                                                    });
-                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                                }
-
-                                                if ui.button("Fancy Tab").clicked() {
-                                                    ui.ctx().data_mut(|d| {
-                                                        d.insert_temp(
-                                                            egui::Id::new("add_tab_request"),
-                                                            Some((surface, node, "Fancy")),
-                                                        )
-                                                    });
-                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                                }
-
-                                                if ui.button("Inspector Tab").clicked() {
-                                                    ui.ctx().data_mut(|d| {
-                                                        d.insert_temp(
-                                                            egui::Id::new("add_tab_request"),
-                                                            Some((surface, node, "Inspector")),
-                                                        )
-                                                    });
-                                                    ui.memory_mut(|mem| mem.close_popup(popup_id));
-                                                }
-                                            },
-                                        );
                                     }
                                 });
                             }

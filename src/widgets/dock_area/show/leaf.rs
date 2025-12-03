@@ -1,8 +1,8 @@
 use egui::{
     emath::TSTransform, epaint::TextShape, lerp, pos2, vec2, Align, Align2, Button, Color32,
     CornerRadius, CursorIcon, Frame, Id, Key, LayerId, Layout, NumExt, Order, Popup,
-    PopupCloseBehavior, Rect, Response, ScrollArea, Sense, Shape, Stroke, StrokeKind, TextStyle,
-    Ui, UiBuilder, Vec2, WidgetText,
+    PopupCloseBehavior, Pos2, Rect, Response, ScrollArea, Sense, Shape, Stroke, StrokeKind,
+    TextStyle, Ui, UiBuilder, Vec2, WidgetText,
 };
 use std::f32::consts::FRAC_PI_2;
 
@@ -198,6 +198,12 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             style.tab_bar.tail_padding
         } + fullscreen_extra;
+        let fullscreen_button_primary =
+            if self.dock_state[surface_index][node_index].fullscreen_toggle() {
+                style.tab_bar.height
+            } else {
+                0.0
+            };
 
         // Length dedicated to tabs + tail (collapse button already removed).
         let tab_tail_len = (bar_len - collapse_space).at_least(0.0);
@@ -274,7 +280,8 @@ impl<Tab> DockArea<'_, Tab> {
             let tail_padding = {
                 // tabs_and_tail_len = tabs + gap/+ + tail
                 let max_tabs_without_overflow =
-                    (tabs_and_tail_len - tail_padding_min).at_least(0.0);
+                    (tabs_and_tail_len - tail_padding_min - fullscreen_button_primary)
+                        .at_least(0.0);
                 if style.tab_bar.auto_tail && actual_primary <= max_tabs_without_overflow {
                     (tabs_and_tail_len - actual_primary).at_least(tail_padding_min)
                 } else {
@@ -443,9 +450,11 @@ impl<Tab> DockArea<'_, Tab> {
                         button_size,
                     ),
                 };
-                let label = egui::RichText::new("⛶").size(style.tab_bar.height * 0.6);
+                // Paint a solid background to avoid seeing underlying tabs through the button.
+                ui.painter()
+                    .rect_filled(button_rect, CornerRadius::ZERO, style.tab_bar.bg_fill);
                 let is_fullscreen = self.dock_state.fullscreen_active();
-                let resp = ui.put(button_rect, egui::Button::new(label));
+                let resp = ui.allocate_rect(button_rect, Sense::click());
                 if resp.clicked() {
                     ui.ctx().data_mut(|d| {
                         d.insert_temp(
@@ -456,12 +465,39 @@ impl<Tab> DockArea<'_, Tab> {
                 }
                 if resp.hovered() {
                     ui.output_mut(|o| o.cursor_icon = CursorIcon::PointingHand);
-                    let tooltip = if is_fullscreen {
-                        "退出全屏"
-                    } else {
-                        "全屏当前标签页"
-                    };
-                    resp.on_hover_text(tooltip);
+                }
+                // Draw SVG-like icon with 4 polylines, scaled to rect.
+                let painter = ui.painter();
+                let to_screen = |x: f32, y: f32| {
+                    let scale = button_rect.size().min_elem() / 256.0;
+                    let offset = button_rect.center().to_vec2();
+                    offset + vec2((x - 128.0) * scale, (y - 128.0) * scale)
+                };
+                let stroke = Stroke {
+                    width: style.tab_bar.height * 0.08,
+                    color: ui.visuals().widgets.inactive.fg_stroke.color,
+                };
+                let icon_polylines: &[&[(f32, f32)]] = if is_fullscreen {
+                    &[
+                        &[(208.0, 96.0), (160.0, 96.0), (160.0, 48.0)],
+                        &[(48.0, 160.0), (96.0, 160.0), (96.0, 208.0)],
+                        &[(160.0, 208.0), (160.0, 160.0), (208.0, 160.0)],
+                        &[(96.0, 48.0), (96.0, 96.0), (48.0, 96.0)],
+                    ]
+                } else {
+                    &[
+                        &[(168.0, 48.0), (208.0, 48.0), (208.0, 88.0)],
+                        &[(88.0, 208.0), (48.0, 208.0), (48.0, 168.0)],
+                        &[(208.0, 168.0), (208.0, 208.0), (168.0, 208.0)],
+                        &[(48.0, 88.0), (48.0, 48.0), (88.0, 48.0)],
+                    ]
+                };
+                for poly in icon_polylines {
+                    let points: Vec<Pos2> = poly
+                        .iter()
+                        .map(|(x, y)| to_screen(*x, *y).to_pos2())
+                        .collect();
+                    painter.line(points, stroke);
                 }
                 // Shrink tail rect for custom content to avoid overlap with fullscreen button.
                 tail_rect = match position {
@@ -624,7 +660,9 @@ impl<Tab> DockArea<'_, Tab> {
                 )
             };
 
-            let show_close_button = self.show_close_buttons && closeable;
+            // 全屏状态下强制隐藏关闭按钮。
+            let show_close_button =
+                self.show_close_buttons && closeable && !self.dock_state.fullscreen_active();
 
             let (response, title_id) = if is_being_dragged {
                 let layer_id = LayerId::new(Order::Tooltip, id);

@@ -274,10 +274,7 @@ impl<Tab> DockState<Tab> {
         }
     }
 
-    fn enter_fullscreen(
-        &mut self,
-        (surf, node, tab): (SurfaceIndex, NodeIndex, TabIndex),
-    ) -> bool
+    fn enter_fullscreen(&mut self, (surf, node, tab): (SurfaceIndex, NodeIndex, TabIndex)) -> bool
     where
         Tab: Clone,
     {
