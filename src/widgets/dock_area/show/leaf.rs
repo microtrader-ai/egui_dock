@@ -328,12 +328,6 @@ impl<Tab> DockArea<'_, Tab> {
             )
         };
 
-        // Draw hline from tab end to start of tail padding.
-        let style = match fade_style {
-            Some(style) => style.clone(),
-            None => self.style.as_ref().unwrap().clone(),
-        };
-
         let tabs_start_primary = match position {
             TabBarPosition::Top | TabBarPosition::Bottom => {
                 tabbar_outer_rect.left() + collapse_space
@@ -367,30 +361,36 @@ impl<Tab> DockArea<'_, Tab> {
         let line_start = tabs_end_primary.min(tail_start);
         let line_end = tail_start.max(line_start);
 
+        // Paint indicator on a foreground layer to avoid overlap issues with menus/tooltips.
+        let style = match fade_style {
+            Some(style) => style.clone(),
+            None => self.style.as_ref().unwrap().clone(),
+        };
+        let indicator_painter = ui.painter();
         match position {
             TabBarPosition::Top => {
-                ui.painter().hline(
+                indicator_painter.hline(
                     line_start..=line_end,
                     tabbar_outer_rect.bottom() - px,
                     (px, style.tab_bar.hline_color),
                 );
             }
             TabBarPosition::Bottom => {
-                ui.painter().hline(
+                indicator_painter.hline(
                     line_start..=line_end,
                     tabbar_outer_rect.top() + px,
                     (px, style.tab_bar.hline_color),
                 );
             }
             TabBarPosition::Left => {
-                ui.painter().vline(
+                indicator_painter.vline(
                     tabbar_outer_rect.right() - px,
                     line_start..=line_end,
                     (px, style.tab_bar.hline_color),
                 );
             }
             TabBarPosition::Right => {
-                ui.painter().vline(
+                indicator_painter.vline(
                     tabbar_outer_rect.left() + px,
                     line_start..=line_end,
                     (px, style.tab_bar.hline_color),
@@ -931,14 +931,7 @@ impl<Tab> DockArea<'_, Tab> {
                 let y1 = response.rect.bottom() - marker_px;
                 let x0 = response.rect.left() + marker_px;
                 let x1 = response.rect.right() - marker_px;
-                let indicator_painter = tabs_ui
-                    .ctx()
-                    .layer_painter(LayerId::new(
-                        Order::Foreground,
-                        self.id
-                            .with(("tab_indicator", surface_index, node_index, tab_index.0)),
-                    ))
-                    .with_clip_rect(tabs_ui.clip_rect());
+                let indicator_painter = tabs_ui.painter().with_clip_rect(tabs_ui.clip_rect());
                 match position {
                     TabBarPosition::Top => {
                         indicator_painter.vline(
