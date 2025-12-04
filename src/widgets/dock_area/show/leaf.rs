@@ -305,14 +305,18 @@ impl<Tab> DockArea<'_, Tab> {
             tabs_ui.set_clip_rect(clip_rect);
 
             let tail_start = match position {
-                TabBarPosition::Top | TabBarPosition::Bottom => {
-                    (tabbar_outer_rect.left() + collapse_space + visible_primary)
-                        .at_most(tabbar_outer_rect.right())
-                }
-                TabBarPosition::Left | TabBarPosition::Right => {
-                    (tabbar_outer_rect.top() + collapse_space + visible_primary)
-                        .at_most(tabbar_outer_rect.bottom())
-                }
+                TabBarPosition::Top | TabBarPosition::Bottom => (tabbar_outer_rect.left()
+                    + collapse_space
+                    + visible_primary
+                    + add_gap
+                    + add_size)
+                    .at_most(tabbar_outer_rect.right()),
+                TabBarPosition::Left | TabBarPosition::Right => (tabbar_outer_rect.top()
+                    + collapse_space
+                    + visible_primary
+                    + add_gap
+                    + add_size)
+                    .at_most(tabbar_outer_rect.bottom()),
             };
 
             (
@@ -338,6 +342,27 @@ impl<Tab> DockArea<'_, Tab> {
                 tabbar_outer_rect.top() + collapse_space
             }
         };
+        // Block pointer interactions over hidden tabs when overflow; leave add button/tail interactive.
+        if actual_primary > available_primary {
+            let block_start = tabs_start_primary + available_primary + add_gap + add_size;
+            let block_rect = match position {
+                TabBarPosition::Top | TabBarPosition::Bottom => Rect::from_min_max(
+                    pos2(block_start, tabbar_outer_rect.top()),
+                    pos2(
+                        (tabs_start_primary + actual_primary).at_most(tabbar_outer_rect.right()),
+                        tabbar_outer_rect.bottom(),
+                    ),
+                ),
+                TabBarPosition::Left | TabBarPosition::Right => Rect::from_min_max(
+                    pos2(tabbar_outer_rect.left(), block_start),
+                    pos2(
+                        tabbar_outer_rect.right(),
+                        (tabs_start_primary + actual_primary).at_most(tabbar_outer_rect.bottom()),
+                    ),
+                ),
+            };
+            ui.allocate_rect(block_rect, Sense::hover());
+        }
         let tabs_end_primary = (tabs_start_primary + actual_primary).at_most(tail_start);
         let line_start = tabs_end_primary.min(tail_start);
         let line_end = tail_start.max(line_start);
@@ -1098,9 +1123,15 @@ impl<Tab> DockArea<'_, Tab> {
         response = response.on_hover_cursor(CursorIcon::PointingHand);
 
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
-        let color = if response.hovered() || response.has_focus() {
-            ui.painter()
-                .rect_filled(rect, CornerRadius::ZERO, style.buttons.add_tab_bg_fill);
+        let hovered = response.hovered() || response.has_focus();
+        // 默认与 tail 背景一致，hover 时使用按钮高亮色。
+        let fill = if hovered {
+            style.buttons.add_tab_bg_fill
+        } else {
+            style.tab_bar.bg_fill
+        };
+        ui.painter().rect_filled(rect, CornerRadius::ZERO, fill);
+        let color = if hovered {
             style.buttons.add_tab_active_color
         } else {
             style.buttons.add_tab_color

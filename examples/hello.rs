@@ -94,6 +94,7 @@ struct MyContext {
     secondary_button_on_modifier: bool,
     secondary_button_context_menu: bool,
     next_tab_id: usize,
+    pending_add: Option<(SurfaceIndex, NodeIndex)>,
 }
 
 struct MyApp {
@@ -179,6 +180,11 @@ impl TabViewer for MyContext {
     fn on_close(&mut self, tab: &mut Self::Tab) -> OnCloseResponse {
         self.open_tabs.remove(tab);
         OnCloseResponse::Close
+    }
+
+    fn on_add(&mut self, surface: SurfaceIndex, node: NodeIndex) {
+        // Defer actual insertion to the app update loop.
+        self.pending_add = Some((surface, node));
     }
 
     fn tab_bar_position_for_node(
@@ -728,6 +734,7 @@ impl Default for MyApp {
             show_tab_name_on_hover: false,
             allowed_splits: AllowedSplits::default(),
             next_tab_id: 0,
+            pending_add: None,
         };
 
         Self {
@@ -816,13 +823,12 @@ impl eframe::App for MyApp {
                     .map(|leaf| Arc::new(leaf.tabs.clone()))
                     .unwrap_or_else(|| Arc::new(Vec::new()));
 
-                let fullscreen_active = self.tree.fullscreen_active();
-
                 DockArea::new(&mut self.tree)
                     .style(style)
                     .show_close_buttons(self.context.show_close_buttons)
                     .draggable_tabs(self.context.draggable_tabs)
                     .show_tab_name_on_hover(self.context.show_tab_name_on_hover)
+                    .show_add_buttons(true)
                     .allowed_splits(self.context.allowed_splits)
                     .show_leaf_close_all_buttons(self.context.show_leaf_close_all)
                     // 使用 TabViewer::allow_collapse 控制各区域折叠按钮
@@ -846,61 +852,21 @@ impl eframe::App for MyApp {
                                 let label =
                                     titles.get(tab.0).map(|s| s.as_str()).unwrap_or_default();
                                 ui.horizontal(|ui| {
-                                    // 全屏时展示更多按钮，普通状态精简
-                                    if ui.button("Info").clicked() {
-                                        ui.label(format!("当前: {label}"));
-                                    }
-                                    if ui.button("Add").clicked() {
-                                        ui.ctx().data_mut(|d| {
-                                            d.insert_temp(
-                                                egui::Id::new("add_tab_request"),
-                                                Some((surface, node, "Regular")),
-                                            )
-                                        });
-                                    }
-                                    if fullscreen_active {
-                                        if ui.button("Fancy").clicked() {
-                                            ui.ctx().data_mut(|d| {
-                                                d.insert_temp(
-                                                    egui::Id::new("add_tab_request"),
-                                                    Some((surface, node, "Fancy")),
-                                                )
-                                            });
-                                        }
-                                        if ui.button("Inspector").clicked() {
-                                            ui.ctx().data_mut(|d| {
-                                                d.insert_temp(
-                                                    egui::Id::new("add_tab_request"),
-                                                    Some((surface, node, "Inspector")),
-                                                )
-                                            });
-                                        }
-                                    }
+                                    // 仅展示信息，新增交给内置 + 按钮（TabViewer::on_add）
+                                    ui.label(format!("Current: {label}"));
                                 });
                             }
                         }
                     })
                     .show_inside(ui, &mut self.context);
 
-                // Handle add tab request from tail_content button
-                if let Some(Some((surface, node, tab_type))) = ctx.data_mut(|d| {
-                    d.remove_temp::<Option<(SurfaceIndex, NodeIndex, &str)>>(egui::Id::new(
-                        "add_tab_request",
-                    ))
-                }) {
-                    if surface == SurfaceIndex::main() && node == self.context.right_top {
-                        // Add a new tab based on type
-                        self.context.next_tab_id += 1;
-                        let new_tab = match tab_type {
-                            "Regular" => format!("Regular Tab {}", self.context.next_tab_id),
-                            "Fancy" => format!("Fancy Tab {}", self.context.next_tab_id),
-                            "Inspector" => format!("Inspector {}", self.context.next_tab_id),
-                            _ => format!("New Tab {}", self.context.next_tab_id),
-                        };
-                        self.context.open_tabs.insert(new_tab.clone());
-                        if let Some(leaf) = self.tree[surface][node].get_leaf_mut() {
-                            leaf.append_tab(new_tab);
-                        }
+                // Handle add tab request from TabViewer::on_add (built-in + button)
+                if let Some((surface, node)) = self.context.pending_add.take() {
+                    self.context.next_tab_id += 1;
+                    let new_tab = format!("New Tab {}", self.context.next_tab_id);
+                    self.context.open_tabs.insert(new_tab.clone());
+                    if let Some(leaf) = self.tree[surface][node].get_leaf_mut() {
+                        leaf.append_tab(new_tab);
                     }
                 }
             });
