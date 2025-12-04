@@ -4,7 +4,6 @@ use crate::{NodeIndex, SurfaceIndex, TabIndex};
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TabRemoval {
     Tab(SurfaceIndex, NodeIndex, TabIndex, ForcedRemoval),
-    Node(SurfaceIndex, NodeIndex),
     Window(SurfaceIndex),
 }
 

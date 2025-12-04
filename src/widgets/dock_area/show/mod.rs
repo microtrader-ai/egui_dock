@@ -168,19 +168,6 @@ impl<Tab> DockArea<'_, Tab> {
                         }
                     }
                 }
-                TabRemoval::Node(surface, node) => {
-                    let mut all_tabs_are_closable = true;
-                    for tab in self.dock_state[surface][node].iter_tabs_mut() {
-                        if !(tab_viewer.is_closeable(tab)
-                            && matches!(tab_viewer.on_close(tab), OnCloseResponse::Close))
-                        {
-                            all_tabs_are_closable = false;
-                        }
-                    }
-                    if all_tabs_are_closable {
-                        self.dock_state.remove_leaf((surface, node));
-                    }
-                }
                 TabRemoval::Window(surface) => {
                     // Move all tabs back to main window instead of closing them
                     // Collect all tabs from the window surface

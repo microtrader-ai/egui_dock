@@ -32,10 +32,6 @@ pub struct WindowState {
     #[cfg_attr(feature = "serde", serde(skip))]
     viewport_id: Option<ViewportId>,
 
-    /// True if the viewport should be closed
-    #[cfg_attr(feature = "serde", serde(skip))]
-    should_close: bool,
-
     /// Remember the original node ID this window was detached from (for move back)
     #[cfg_attr(feature = "serde", serde(skip))]
     original_node_id: Option<String>,
@@ -56,7 +52,6 @@ impl Default for WindowState {
             new: true,
             minimized: false,
             viewport_id: None,
-            should_close: false,
             original_node_id: None,
             original_tab_index: None,
         }
@@ -64,6 +59,18 @@ impl Default for WindowState {
 }
 
 impl WindowState {
+    /// Get or create the viewport ID for this window.
+    #[inline(always)]
+    pub(crate) fn get_or_create_viewport_id(&mut self, base_id: Id) -> ViewportId {
+        if let Some(id) = self.viewport_id {
+            id
+        } else {
+            let id = ViewportId::from_hash_of(base_id);
+            self.viewport_id = Some(id);
+            id
+        }
+    }
+
     /// Create a default window state.
     pub(crate) fn new() -> Self {
         Self::default()
@@ -133,36 +140,6 @@ impl WindowState {
         self.minimized
     }
 
-    /// Get or create the viewport ID for this window.
-    #[inline(always)]
-    pub(crate) fn get_or_create_viewport_id(&mut self, base_id: Id) -> ViewportId {
-        if let Some(id) = self.viewport_id {
-            id
-        } else {
-            let id = ViewportId::from_hash_of(base_id);
-            self.viewport_id = Some(id);
-            id
-        }
-    }
-
-    /// Mark this viewport as should be closed.
-    #[inline(always)]
-    pub(crate) fn mark_close(&mut self) {
-        self.should_close = true;
-    }
-
-    /// Check if this viewport should be closed.
-    #[inline(always)]
-    pub(crate) fn should_close(&self) -> bool {
-        self.should_close
-    }
-
-    /// Reset the close flag.
-    #[inline(always)]
-    pub(crate) fn reset_close(&mut self) {
-        self.should_close = false;
-    }
-
     /// Set the original node ID this window was detached from.
     #[inline(always)]
     pub(crate) fn set_original_node_id(&mut self, node_id: String) {
@@ -188,26 +165,4 @@ impl WindowState {
     }
 
     //the 'static in this case means that the `open` field is always `None`
-    pub(crate) fn create_window(&mut self, id: Id, _bounds: Rect) -> egui::Window<'static> {
-        let new = self.new;
-        let mut window_constructor = egui::Window::new("")
-            .id(id)
-            // .constrain_to(bounds)  // Removed: allow windows to move outside main window
-            .title_bar(false);
-
-        if let Some(position) = self.next_position() {
-            window_constructor = window_constructor.current_pos(position);
-        }
-        if let Some(size) = self.next_size() {
-            window_constructor = window_constructor.fixed_size(size);
-        }
-        // Reset the height of the window if it is now expanded
-        if new {
-            if let Some(height) = self.expanded_height() {
-                window_constructor = window_constructor.max_height(height).min_height(height);
-            }
-        }
-        self.new = false;
-        window_constructor
-    }
 }

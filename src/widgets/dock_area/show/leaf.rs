@@ -1318,31 +1318,6 @@ impl<Tab> DockArea<'_, Tab> {
             && (response.hovered() || response.has_focus() || response.is_pointer_button_down_on())
     }
 
-    fn draw_close_window_symbol(ui: &mut Ui, stroke_color: Color32, close_all_rect: Rect) {
-        ui.painter().add(Shape::line(
-            vec![
-                close_all_rect
-                    .right_center()
-                    .lerp(close_all_rect.right_bottom(), 0.5),
-                close_all_rect.right_bottom(),
-                close_all_rect.left_bottom(),
-                close_all_rect.left_top(),
-                close_all_rect
-                    .center_top()
-                    .lerp(close_all_rect.left_top(), 0.5),
-            ],
-            Stroke::new(1.0, stroke_color),
-        ));
-        ui.painter().line_segment(
-            [close_all_rect.center_top(), close_all_rect.right_center()],
-            Stroke::new(1.0, stroke_color),
-        );
-        ui.painter().line_segment(
-            [close_all_rect.center(), close_all_rect.right_top()],
-            Stroke::new(1.0, stroke_color),
-        );
-    }
-
     fn draw_arrow(collapsed: bool, ui: &mut Ui, color: Color32, arrow_rect: Rect) {
         ui.painter().add(Shape::convex_polygon(
             if collapsed {
