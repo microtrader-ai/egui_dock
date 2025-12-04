@@ -121,6 +121,7 @@ impl<Tab> DockArea<'_, Tab> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn tab_bar(
         &mut self,
         ui: &mut Ui,
@@ -1149,8 +1150,7 @@ impl<Tab> DockArea<'_, Tab> {
             style.buttons.add_tab_border_color,
         );
         if position.is_vertical() {
-            ui.painter()
-                .hline(rect.x_range(), rect.top(), stroke.clone());
+            ui.painter().hline(rect.x_range(), rect.top(), stroke);
         } else {
             ui.painter().vline(rect.left(), rect.y_range(), stroke);
         }
@@ -1172,6 +1172,7 @@ impl<Tab> DockArea<'_, Tab> {
 
     /// Draws the close all button.
     /// Draws the collapse button.
+    #[allow(clippy::too_many_arguments)]
     fn tab_collapse(
         &mut self,
         ui: &mut Ui,
@@ -1238,8 +1239,7 @@ impl<Tab> DockArea<'_, Tab> {
             style.buttons.collapse_tabs_border_color,
         );
         if position.is_vertical() {
-            ui.painter()
-                .hline(rect.x_range(), rect.bottom(), stroke.clone());
+            ui.painter().hline(rect.x_range(), rect.bottom(), stroke);
         } else {
             ui.painter().vline(rect.right(), rect.y_range(), stroke);
         }

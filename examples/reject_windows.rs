@@ -15,6 +15,7 @@ fn main() -> eframe::Result<()> {
 
 struct TabViewer;
 
+#[derive(Clone)]
 struct OpinionatedTab {
     can_become_window: Result<bool, bool>,
     title: String,

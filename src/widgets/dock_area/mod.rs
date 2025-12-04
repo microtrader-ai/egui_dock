@@ -14,6 +14,8 @@ pub use allowed_splits::AllowedSplits;
 use tab_removal::TabRemoval;
 
 use egui::{emath::*, Id, Modifiers, Ui};
+type TabTailContentFn = Box<dyn FnMut(&mut Ui, SurfaceIndex, NodeIndex, TabIndex)>;
+type TabTailPaddingFn = Box<dyn FnMut(SurfaceIndex, NodeIndex, TabIndex) -> f32>;
 
 /// Displays a [`DockState`] in `egui`.
 pub struct DockArea<'tree, Tab> {
@@ -36,8 +38,8 @@ pub struct DockArea<'tree, Tab> {
     secondary_button_context_menu: bool,
     allowed_splits: AllowedSplits,
     window_bounds: Option<Rect>,
-    tab_bar_tail_content: Option<Box<dyn FnMut(&mut Ui, SurfaceIndex, NodeIndex, TabIndex)>>,
-    tab_bar_tail_padding: Option<Box<dyn FnMut(SurfaceIndex, NodeIndex, TabIndex) -> f32>>,
+    tab_bar_tail_content: Option<TabTailContentFn>,
+    tab_bar_tail_padding: Option<TabTailPaddingFn>,
     to_remove: Vec<TabRemoval>,
     to_detach: Vec<(SurfaceIndex, NodeIndex, TabIndex)>,
     new_focused: Option<(SurfaceIndex, NodeIndex)>,

@@ -14,11 +14,13 @@ fn main() -> eframe::Result<()> {
     )
 }
 
+#[derive(Clone)]
 enum MyTabKind {
     Regular,
     Fancy,
 }
 
+#[derive(Clone)]
 struct MyTab {
     kind: MyTabKind,
     surface: SurfaceIndex,

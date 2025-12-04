@@ -133,10 +133,11 @@ impl<Tab> DockArea<'_, Tab> {
                     }
 
                     if minimized {
+                        let fade_style_only = _fade_style.map(|(style, _surface)| style);
                         self.minimized_body(
                             ui,
                             surf_index,
-                            _fade_style.map(|(style, _surface)| style),
+                            fade_style_only,
                             title.clone(),
                             tab_count,
                         )
@@ -163,13 +164,7 @@ impl<Tab> DockArea<'_, Tab> {
                             }
                         } else {
                             // Multiple tabs: show normal tree with tab bar
-                            self.render_nodes(
-                                ui,
-                                tab_viewer,
-                                state,
-                                surf_index,
-                                _fade_style.map(|(style, factor)| (style, factor)),
-                            );
+                            self.render_nodes(ui, tab_viewer, state, surf_index, _fade_style);
                         }
                     }
                 });
