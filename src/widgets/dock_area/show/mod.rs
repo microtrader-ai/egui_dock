@@ -72,7 +72,9 @@ impl<Tab> DockArea<'_, Tab> {
     {
         self.style
             .get_or_insert(Style::from_egui(ui.style().as_ref()));
-        self.window_bounds.get_or_insert(ui.ctx().content_rect());
+        // `content_rect` was added after egui 0.32.1, so fall back to the screen rect.
+        self.window_bounds
+            .get_or_insert(ui.ctx().input(|i| i.screen_rect()));
 
         let mut state = State::load(ui.ctx(), self.id);
 
