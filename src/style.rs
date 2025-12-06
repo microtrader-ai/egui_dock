@@ -456,7 +456,7 @@ impl Default for TabBarStyle {
             bg_fill: Color32::WHITE,
             height: 24.0,
             tail_padding: 1.0,
-            auto_tail: false,
+            auto_tail: true,
             inner_margin: Margin::ZERO,
             show_scroll_bar_on_overflow: true,
             corner_radius: CornerRadius::default(),

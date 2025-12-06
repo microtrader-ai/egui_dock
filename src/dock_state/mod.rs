@@ -286,11 +286,18 @@ impl<Tab> DockState<Tab> {
             return false;
         }
 
-        let mut backup = self.clone();
-        let removed = backup.remove_tab((surf, node, tab));
-        let Some(tab_val) = removed else {
+        // Clone the tab value without removing it from the backup
+        let tab_val = self[surf][node]
+            .get_leaf()
+            .and_then(|leaf| leaf.tabs().get(tab.0))
+            .cloned();
+
+        let Some(tab_val) = tab_val else {
             return false;
         };
+
+        // Backup the current state as-is (don't remove the tab)
+        let backup = self.clone();
 
         let mut new_state = DockState::new(vec![tab_val]);
         new_state.translations = backup.translations.clone();
@@ -311,6 +318,8 @@ impl<Tab> DockState<Tab> {
             return false;
         };
         let mut backup = *backup;
+
+        // Get the current fullscreen tab
         let current_tab = {
             let mut found = None;
             let surface = SurfaceIndex::main();
@@ -323,16 +332,22 @@ impl<Tab> DockState<Tab> {
             found
         };
 
+        // Replace the original tab with the current one (in case it was modified during fullscreen)
         if let Some(tab_val) = current_tab {
             if let Some((orig_surf, orig_node, orig_tab)) = self.fullscreen_origin.take() {
                 if backup.is_surface_valid(orig_surf)
                     && orig_node.0 < backup[orig_surf].len()
                     && backup[orig_surf][orig_node].is_leaf()
+                    && orig_tab.0 < backup[orig_surf][orig_node].tabs_count()
                 {
-                    let len = backup[orig_surf][orig_node].tabs_count();
-                    let idx = orig_tab.0.min(len);
-                    backup[orig_surf][orig_node].insert_tab(TabIndex(idx), tab_val);
+                    // Replace the tab at the original position
+                    if let Some(leaf) = backup[orig_surf][orig_node].get_leaf_mut() {
+                        if let Some(old_tab) = leaf.tabs_mut().get_mut(orig_tab.0) {
+                            *old_tab = tab_val;
+                        }
+                    }
                 } else {
+                    // Fallback: if original position is invalid, push to first leaf
                     backup.push_to_first_leaf(tab_val);
                 }
             } else {
@@ -370,13 +385,14 @@ impl<Tab> DockState<Tab> {
         (src_surface, src_node, src_tab): (SurfaceIndex, NodeIndex, TabIndex),
         dst_tab: impl Into<TabDestination>,
     ) {
-        let (src_family_id, src_allowed_drops) = {
+        let (src_family_id, src_allowed_drops, src_fullscreen_toggle) = {
             let node = &mut self[src_surface][src_node];
             (
                 node.ensure_family_id(),
                 node.allowed_drops()
                     .cloned()
                     .unwrap_or_else(AllowedDrops::all),
+                node.get_leaf().map(|leaf| leaf.fullscreen_toggle()).unwrap_or(false),
             )
         };
         match dst_tab.into() {
@@ -397,7 +413,12 @@ impl<Tab> DockState<Tab> {
                 let tab = self[src_surface][src_node].remove_tab(src_tab).unwrap();
                 match dst_tab {
                     TabInsert::Split(split) => {
-                        self[dst_surface].split(dst_node, split, 0.5, Node::leaf(tab));
+                        let mut new_node = Node::leaf(tab);
+                        // Inherit fullscreen_toggle setting from source node
+                        if let Some(leaf) = new_node.get_leaf_mut() {
+                            leaf.set_fullscreen_toggle(src_fullscreen_toggle);
+                        }
+                        self[dst_surface].split(dst_node, split, 0.5, new_node);
                     }
 
                     TabInsert::Insert(index) => self[dst_surface][dst_node].insert_tab(index, tab),
@@ -411,6 +432,10 @@ impl<Tab> DockState<Tab> {
                 if let Some(root) = tree.root_node_mut() {
                     root.set_family_id(src_family_id.clone());
                     root.set_allowed_drops(src_allowed_drops.clone());
+                    // Inherit fullscreen_toggle setting from source node
+                    if let Some(leaf) = root.get_leaf_mut() {
+                        leaf.set_fullscreen_toggle(src_fullscreen_toggle);
+                    }
                 }
                 self[dst_surface] = tree;
             }
