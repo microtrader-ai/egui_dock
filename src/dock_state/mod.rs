@@ -392,7 +392,9 @@ impl<Tab> DockState<Tab> {
                 node.allowed_drops()
                     .cloned()
                     .unwrap_or_else(AllowedDrops::all),
-                node.get_leaf().map(|leaf| leaf.fullscreen_toggle()).unwrap_or(false),
+                node.get_leaf()
+                    .map(|leaf| leaf.fullscreen_toggle())
+                    .unwrap_or(false),
             )
         };
         match dst_tab.into() {

@@ -88,12 +88,17 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             None
         };
+        let always_on_top = window_state.is_always_on_top();
 
         // Create viewport builder
         let mut viewport_builder = egui::ViewportBuilder::default()
             .with_title(title.text())
             .with_decorations(true)
             .with_resizable(true);
+
+        if always_on_top {
+            viewport_builder = viewport_builder.with_always_on_top();
+        }
 
         if let Some(pos) = next_position {
             viewport_builder = viewport_builder.with_position(pos);

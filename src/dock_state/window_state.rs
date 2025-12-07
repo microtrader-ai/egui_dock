@@ -39,6 +39,9 @@ pub struct WindowState {
     /// Remember the original tab index within the node (for move back)
     #[cfg_attr(feature = "serde", serde(skip))]
     original_tab_index: Option<usize>,
+
+    /// Whether the floating window should stay above other windows.
+    always_on_top: bool,
 }
 
 impl Default for WindowState {
@@ -54,6 +57,7 @@ impl Default for WindowState {
             viewport_id: None,
             original_node_id: None,
             original_tab_index: None,
+            always_on_top: false,
         }
     }
 }
@@ -162,6 +166,17 @@ impl WindowState {
     #[inline(always)]
     pub(crate) fn original_tab_index(&self) -> Option<usize> {
         self.original_tab_index
+    }
+
+    /// Control whether this floating window should stay on top of other windows.
+    pub fn set_always_on_top(&mut self, always_on_top: bool) -> &mut Self {
+        self.always_on_top = always_on_top;
+        self
+    }
+
+    /// Returns `true` if this window should stay on top of other windows.
+    pub fn is_always_on_top(&self) -> bool {
+        self.always_on_top
     }
 
     //the 'static in this case means that the `open` field is always `None`
