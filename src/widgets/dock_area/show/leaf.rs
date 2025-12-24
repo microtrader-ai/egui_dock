@@ -183,8 +183,10 @@ impl<Tab> DockArea<'_, Tab> {
         } else {
             0.0
         };
-        let add_gap = if self.show_add_buttons { px } else { 0.0 };
-        let add_size = if self.show_add_buttons {
+        let show_add_button =
+            self.show_add_buttons && self.dock_state[surface_index][node_index].add_button();
+        let add_gap = if show_add_button { px } else { 0.0 };
+        let add_size = if show_add_button {
             Style::TAB_ADD_BUTTON_SIZE
         } else {
             0.0
@@ -400,7 +402,7 @@ impl<Tab> DockArea<'_, Tab> {
         };
 
         // Add button placed just before tail padding (inside tab/tail area).
-        if self.show_add_buttons {
+        if show_add_button {
             let plus_rect = match position {
                 TabBarPosition::Top | TabBarPosition::Bottom => {
                     let plus_end = (tail_start - add_gap).at_least(tabbar_outer_rect.left());

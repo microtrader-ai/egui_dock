@@ -385,7 +385,7 @@ impl<Tab> DockState<Tab> {
         (src_surface, src_node, src_tab): (SurfaceIndex, NodeIndex, TabIndex),
         dst_tab: impl Into<TabDestination>,
     ) {
-        let (src_family_id, src_allowed_drops, src_fullscreen_toggle) = {
+        let (src_family_id, src_allowed_drops, src_fullscreen_toggle, src_add_button) = {
             let node = &mut self[src_surface][src_node];
             (
                 node.ensure_family_id(),
@@ -395,6 +395,7 @@ impl<Tab> DockState<Tab> {
                 node.get_leaf()
                     .map(|leaf| leaf.fullscreen_toggle())
                     .unwrap_or(false),
+                node.get_leaf().map(|leaf| leaf.add_button()).unwrap_or(true),
             )
         };
         match dst_tab.into() {
@@ -419,6 +420,7 @@ impl<Tab> DockState<Tab> {
                         // Inherit fullscreen_toggle setting from source node
                         if let Some(leaf) = new_node.get_leaf_mut() {
                             leaf.set_fullscreen_toggle(src_fullscreen_toggle);
+                            leaf.set_add_button(src_add_button);
                         }
                         self[dst_surface].split(dst_node, split, 0.5, new_node);
                     }
@@ -437,6 +439,7 @@ impl<Tab> DockState<Tab> {
                     // Inherit fullscreen_toggle setting from source node
                     if let Some(leaf) = root.get_leaf_mut() {
                         leaf.set_fullscreen_toggle(src_fullscreen_toggle);
+                        leaf.set_add_button(src_add_button);
                     }
                 }
                 self[dst_surface] = tree;

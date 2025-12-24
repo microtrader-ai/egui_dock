@@ -344,40 +344,42 @@ impl<Tab> Node<Tab> {
     {
         match self {
             Node::Leaf(leaf) => {
-                let LeafNode {
-                    rect,
-                    viewport,
-                    tabs,
-                    active,
-                    scroll,
-                    collapsed,
-                    hidden,
-                    id,
-                    always_keep,
-                    fullscreen_toggle,
-                    allowed_drops,
-                    family_id,
-                } = leaf;
+	                let LeafNode {
+	                    rect,
+	                    viewport,
+	                    tabs,
+	                    active,
+	                    scroll,
+	                    collapsed,
+	                    hidden,
+	                    id,
+	                    always_keep,
+	                    fullscreen_toggle,
+	                    add_button,
+	                    allowed_drops,
+	                    family_id,
+	                } = leaf;
                 let tabs: Vec<_> = tabs.iter().filter_map(function).collect();
                 if tabs.is_empty() {
                     Node::Empty
                 } else {
-                    Node::Leaf(LeafNode {
-                        rect: *rect,
-                        viewport: *viewport,
-                        tabs,
-                        active: *active,
-                        scroll: *scroll,
-                        collapsed: *collapsed,
-                        hidden: *hidden,
-                        id: id.clone(),
-                        always_keep: *always_keep,
-                        fullscreen_toggle: *fullscreen_toggle,
-                        allowed_drops: allowed_drops.clone(),
-                        family_id: family_id.clone(),
-                    })
-                }
-            }
+	                    Node::Leaf(LeafNode {
+	                        rect: *rect,
+	                        viewport: *viewport,
+	                        tabs,
+	                        active: *active,
+	                        scroll: *scroll,
+	                        collapsed: *collapsed,
+	                        hidden: *hidden,
+	                        id: id.clone(),
+	                        always_keep: *always_keep,
+	                        fullscreen_toggle: *fullscreen_toggle,
+	                        add_button: *add_button,
+	                        allowed_drops: allowed_drops.clone(),
+	                        family_id: family_id.clone(),
+	                    })
+	                }
+	            }
             Node::Empty => Node::Empty,
             Node::Vertical(split) => Node::Vertical(split.clone()),
             Node::Horizontal(split) => Node::Horizontal(split.clone()),
@@ -451,6 +453,25 @@ impl<Tab> Node<Tab> {
             leaf.fullscreen_toggle()
         } else {
             false
+        }
+    }
+
+    /// Enable/disable the built-in add (+) button on the tab bar (leaf only).
+    #[inline]
+    pub fn set_add_button(&mut self, enabled: bool) {
+        if let Node::Leaf(leaf) = self {
+            leaf.set_add_button(enabled);
+        }
+    }
+
+    /// Returns whether the built-in add (+) button is enabled for this node.
+    /// Returns `true` for non-leaf nodes.
+    #[inline]
+    pub fn add_button(&self) -> bool {
+        if let Node::Leaf(leaf) = self {
+            leaf.add_button()
+        } else {
+            true
         }
     }
 

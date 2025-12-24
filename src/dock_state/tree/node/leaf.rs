@@ -2,6 +2,11 @@ use egui::Rect;
 
 use crate::{AllowedDrops, TabIndex};
 
+#[cfg(feature = "serde")]
+fn default_true() -> bool {
+    true
+}
+
 /// The inner data of a [``Node::Leaf``](crate::Node), which contains tabs and can be collapsed.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -40,6 +45,10 @@ pub struct LeafNode<Tab> {
     #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) fullscreen_toggle: bool,
 
+    /// Whether to show the built-in add (+) button on the tab bar.
+    #[cfg_attr(feature = "serde", serde(default = "default_true"))]
+    pub(crate) add_button: bool,
+
     /// Drop permissions inherited from the family.
     #[cfg_attr(feature = "serde", serde(default = "AllowedDrops::all"))]
     pub allowed_drops: AllowedDrops,
@@ -63,6 +72,7 @@ impl<Tab> LeafNode<Tab> {
             id: None,
             always_keep: false,
             fullscreen_toggle: false,
+            add_button: true,
             allowed_drops: AllowedDrops::all(),
             family_id: None,
         }
@@ -90,6 +100,18 @@ impl<Tab> LeafNode<Tab> {
     #[inline]
     pub fn fullscreen_toggle(&self) -> bool {
         self.fullscreen_toggle
+    }
+
+    /// Set whether to show the built-in add (+) button on this node.
+    #[inline]
+    pub fn set_add_button(&mut self, enabled: bool) {
+        self.add_button = enabled;
+    }
+
+    /// Get whether the built-in add (+) button is enabled.
+    #[inline]
+    pub fn add_button(&self) -> bool {
+        self.add_button
     }
 
     /// Get the unique ID of this leaf node
