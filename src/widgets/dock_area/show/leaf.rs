@@ -1,6 +1,8 @@
 use egui::{
-    emath::TSTransform, epaint::TextShape, lerp, pos2, vec2, Align, Align2, Button, Color32,
-    CornerRadius, CursorIcon, Frame, Id, Key, LayerId, Layout, NumExt, Order, Popup,
+    emath::{Rot2, TSTransform},
+    epaint::TextShape,
+    lerp, pos2, vec2, Align, Align2, Button, Color32, CornerRadius, CursorIcon, Frame, Id, Key,
+    LayerId, Layout, NumExt, Order, Popup,
     PopupCloseBehavior, Pos2, Rect, Response, ScrollArea, Sense, Shape, Stroke, StrokeKind,
     TextStyle, Ui, UiBuilder, Vec2, WidgetText,
 };
@@ -1486,12 +1488,16 @@ impl<Tab> DockArea<'_, Tab> {
         if position.is_vertical() {
             text_rect.set_height(text_rect.height() - close_button_size);
             let pos_center = text_rect.shrink2(vec2(y_spacing, y_spacing)).center();
-            let pos = pos_center - galley.rect.center().to_vec2();
             let angle = match position {
                 TabBarPosition::Left => -FRAC_PI_2,
                 TabBarPosition::Right => FRAC_PI_2,
                 _ => 0.0,
             };
+            // `galley.rect` 以文字排版框为基准，图标字体/部分 glyph 可能导致视觉中心（mesh_bounds）偏移。
+            // 这里将视觉中心校正到 tab 的中心点，保证左右留白一致。
+            let visual_offset = galley.mesh_bounds.center() - galley.rect.center();
+            let visual_offset_rot = Rot2::from_angle(angle) * visual_offset;
+            let pos = pos_center - galley.rect.center().to_vec2() - visual_offset_rot;
             let text_shape = TextShape::new(pos, galley.clone(), tab_style.text_color)
                 .with_override_text_color(tab_style.text_color)
                 .with_angle_and_anchor(angle, Align2::CENTER_CENTER);
