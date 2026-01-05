@@ -454,16 +454,14 @@ fn draw_window_rect(rect: Rect, ui: &Ui, style: &Style) {
 
 /// An adapted version of the [`egui::Area`]s code for restricting an area rect to a bound.
 fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
+    let content_rect = ui.ctx().input(|i| i.content_rect());
     if rect.width() > bounds.width() {
         // Allow overlapping side bars.
-        // `content_rect` landed after egui 0.32.1; use the screen rect on older versions.
-        let screen_rect = ui.ctx().input(|i| i.screen_rect());
-        (bounds.min.x, bounds.max.x) = (screen_rect.min.x, screen_rect.max.x);
+        (bounds.min.x, bounds.max.x) = (content_rect.min.x, content_rect.max.x);
     }
     if rect.height() > bounds.height() {
         // Allow overlapping top/bottom bars:
-        let screen_rect = ui.ctx().input(|i| i.screen_rect());
-        (bounds.min.y, bounds.max.y) = (screen_rect.min.y, screen_rect.max.y);
+        (bounds.min.y, bounds.max.y) = (content_rect.min.y, content_rect.max.y);
     }
 
     let mut pos = rect.min;

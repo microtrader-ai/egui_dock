@@ -18,8 +18,7 @@ default = []
 serde = ["dep:serde", "egui/serde"]
 
 [dependencies]
-# Pin to egui 0.32.1 for compatibility with downstream consumers.
-egui = { version = "=0.32.1", default-features = false }
+egui = { version = "=0.33.3", default-features = false }
 serde = { version = "1", optional = true, features = ["derive"] }
 
 duplicate = "2.0"
@@ -28,7 +27,7 @@ uuid = { version = "1.18.1", features = ["v4"] }
 
 [dev-dependencies]
 # Keep eframe on the same egui patch version to avoid duplicate egui versions in examples.
-eframe = { version = "=0.32.1", default-features = false, features = [
+eframe = { version = "=0.33.3", default-features = false, features = [
     "default",
     "default_fonts",
     "glow",
