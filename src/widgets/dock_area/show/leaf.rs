@@ -1582,12 +1582,20 @@ impl<Tab> DockArea<'_, Tab> {
         position: TabBarPosition,
         tabbar_rect: Rect,
     ) {
-        assert_ne!(available_width, 0.0);
-
         let leaf = self.dock_state[surface_index][node_index]
             .get_leaf_mut()
             .expect("This node must be a leaf");
-        let overflow = (actual_width - available_width).at_least(0.0);
+
+        let overflow = if available_width.is_finite() && actual_width.is_finite() {
+            (actual_width - available_width).at_least(0.0)
+        } else {
+            0.0
+        };
+        if !available_width.is_finite() || available_width <= 0.0 || !actual_width.is_finite() {
+            leaf.scroll = leaf.scroll.clamp(0.0, overflow);
+            return;
+        }
+
         let style = fade_style.unwrap_or_else(|| self.style.as_ref().unwrap());
 
         // Compare to 1.0 and not 0.0 to avoid drawing a scroll bar due
@@ -1666,14 +1674,15 @@ impl<Tab> DockArea<'_, Tab> {
                 };
 
                 if scroll_bar_handle_response.dragged() && handle_range > 0.0 {
-                    let pointer = scroll_bar_handle_response.interact_pointer_pos().unwrap();
-                    let offset = if position.is_vertical() {
-                        (pointer.y - scroll_bar_rect.top()) - scroll_bar_handle_size * 0.5
-                    } else {
-                        (pointer.x - scroll_bar_rect.left()) - scroll_bar_handle_size * 0.5
-                    };
-                    let t = (offset / handle_range).clamp(0.0, 1.0);
-                    leaf.scroll = lerp(0.0..=overflow, t);
+                    if let Some(pointer) = scroll_bar_handle_response.interact_pointer_pos() {
+                        let offset = if position.is_vertical() {
+                            (pointer.y - scroll_bar_rect.top()) - scroll_bar_handle_size * 0.5
+                        } else {
+                            (pointer.x - scroll_bar_rect.left()) - scroll_bar_handle_size * 0.5
+                        };
+                        let t = (offset / handle_range).clamp(0.0, 1.0);
+                        leaf.scroll = lerp(0.0..=overflow, t);
+                    }
                 }
 
                 if let Some(pos) = state.last_hover_pos {
@@ -1747,12 +1756,15 @@ impl<Tab> DockArea<'_, Tab> {
             active,
             ..
         } = leaf;
+
         if !collapsed {
             if let Some(tab) = tabs.get_mut(active.0) {
                 if *viewport != body_rect {
                     *viewport = body_rect;
                     tab_viewer.on_rect_changed(tab);
                 }
+
+                let can_show_body = body_rect.width() > 0.0 && body_rect.height() > 0.0;
 
                 if ui.input(|i| i.pointer.any_click()) {
                     if let Some(pos) = state.last_hover_pos {
@@ -1764,63 +1776,65 @@ impl<Tab> DockArea<'_, Tab> {
                     }
                 }
 
-                let (style, fade_factor) =
-                    fade.unwrap_or_else(|| (self.style.as_ref().unwrap(), 1.0));
-                let tabs_styles = tab_viewer.tab_style_override(tab, &style.tab);
+                if can_show_body {
+                    let (style, fade_factor) =
+                        fade.unwrap_or_else(|| (self.style.as_ref().unwrap(), 1.0));
+                    let tabs_styles = tab_viewer.tab_style_override(tab, &style.tab);
 
-                let tabs_style = tabs_styles.as_ref().unwrap_or(&style.tab);
+                    let tabs_style = tabs_styles.as_ref().unwrap_or(&style.tab);
 
-                if tab_viewer.clear_background(tab) {
-                    ui.painter().rect_filled(
-                        body_rect,
-                        tabs_style.tab_body.corner_radius,
-                        tabs_style.tab_body.bg_fill,
+                    if tab_viewer.clear_background(tab) {
+                        ui.painter().rect_filled(
+                            body_rect,
+                            tabs_style.tab_body.corner_radius,
+                            tabs_style.tab_body.bg_fill,
+                        );
+                    }
+
+                    // Construct a new ui with the correct tab id.
+                    //
+                    // We are forced to use `Ui::new` because other methods (eg: push_id) always mix
+                    // the provided id with their own which would cause tabs to change id when moved
+                    // from node to node.
+                    let id = self.id.with(tab_viewer.id(tab));
+                    ui.ctx().check_for_id_clash(id, body_rect, "a tab with id");
+                    let ui = &mut Ui::new(
+                        ui.ctx().clone(),
+                        id,
+                        UiBuilder::new().max_rect(body_rect).layer_id(ui.layer_id()),
                     );
+                    ui.set_clip_rect(Rect::from_min_max(ui.cursor().min, ui.clip_rect().max));
+
+                    // Use initial spacing for ui.
+                    ui.spacing_mut().item_spacing = spacing;
+
+                    // Offset the background rectangle up to hide the top border behind the clip rect.
+                    // To avoid anti-aliasing lines when the stroke width is not divisible by two, we
+                    // need to calculate the effective anti-aliased stroke width.
+                    let effective_stroke_width = (tabs_style.tab_body.stroke.width / 2.0).ceil() * 2.0;
+                    let tab_body_rect = ui
+                        .clip_rect()
+                        .expand2(vec2(effective_stroke_width, effective_stroke_width));
+                    ui.painter().rect_stroke(
+                        rect_stroke_box(tab_body_rect, tabs_style.tab_body.stroke.width),
+                        tabs_style.tab_body.corner_radius,
+                        tabs_style.tab_body.stroke,
+                        StrokeKind::Inside,
+                    );
+
+                    ScrollArea::new(tab_viewer.scroll_bars(tab)).show(ui, |ui| {
+                        Frame::new()
+                            .inner_margin(tabs_style.tab_body.inner_margin)
+                            .show(ui, |ui| {
+                                if fade_factor != 1.0 {
+                                    fade_visuals(ui.visuals_mut(), fade_factor);
+                                }
+                                let available_rect = ui.available_rect_before_wrap();
+                                ui.expand_to_include_rect(available_rect);
+                                tab_viewer.ui(ui, tab);
+                            });
+                    });
                 }
-
-                // Construct a new ui with the correct tab id.
-                //
-                // We are forced to use `Ui::new` because other methods (eg: push_id) always mix
-                // the provided id with their own which would cause tabs to change id when moved
-                // from node to node.
-                let id = self.id.with(tab_viewer.id(tab));
-                ui.ctx().check_for_id_clash(id, body_rect, "a tab with id");
-                let ui = &mut Ui::new(
-                    ui.ctx().clone(),
-                    id,
-                    UiBuilder::new().max_rect(body_rect).layer_id(ui.layer_id()),
-                );
-                ui.set_clip_rect(Rect::from_min_max(ui.cursor().min, ui.clip_rect().max));
-
-                // Use initial spacing for ui.
-                ui.spacing_mut().item_spacing = spacing;
-
-                // Offset the background rectangle up to hide the top border behind the clip rect.
-                // To avoid anti-aliasing lines when the stroke width is not divisible by two, we
-                // need to calculate the effective anti-aliased stroke width.
-                let effective_stroke_width = (tabs_style.tab_body.stroke.width / 2.0).ceil() * 2.0;
-                let tab_body_rect = ui
-                    .clip_rect()
-                    .expand2(vec2(effective_stroke_width, effective_stroke_width));
-                ui.painter().rect_stroke(
-                    rect_stroke_box(tab_body_rect, tabs_style.tab_body.stroke.width),
-                    tabs_style.tab_body.corner_radius,
-                    tabs_style.tab_body.stroke,
-                    StrokeKind::Inside,
-                );
-
-                ScrollArea::new(tab_viewer.scroll_bars(tab)).show(ui, |ui| {
-                    Frame::new()
-                        .inner_margin(tabs_style.tab_body.inner_margin)
-                        .show(ui, |ui| {
-                            if fade_factor != 1.0 {
-                                fade_visuals(ui.visuals_mut(), fade_factor);
-                            }
-                            let available_rect = ui.available_rect_before_wrap();
-                            ui.expand_to_include_rect(available_rect);
-                            tab_viewer.ui(ui, tab);
-                        });
-                });
             }
         }
 
