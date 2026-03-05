@@ -94,7 +94,8 @@ impl<Tab> DockArea<'_, Tab> {
         let mut viewport_builder = egui::ViewportBuilder::default()
             .with_title(title.text())
             .with_decorations(true)
-            .with_resizable(true);
+            .with_resizable(true)
+            .with_drag_and_drop(false);
 
         if always_on_top {
             viewport_builder = viewport_builder.with_always_on_top();
