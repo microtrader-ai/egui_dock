@@ -198,15 +198,41 @@ impl<Tab> DockArea<'_, Tab> {
                             let original_tab_index =
                                 window_state.and_then(|ws| ws.original_tab_index());
 
-                            let dst_node = original_node_id
+                            let allow_main_node = |node_index| {
+                                self.dock_state
+                                    .get_tab((src_surface, src_node, src_tab))
+                                    .map(|tab| {
+                                        tab_viewer.allow_move_to(tab, SurfaceIndex::main(), node_index)
+                                    })
+                                    .unwrap_or(true)
+                            };
+
+                            let original_dst_node = original_node_id
                                 .and_then(|original_id| {
-                                    // Find node by UUID
                                     self.dock_state.main_surface().find_node_by_id(&original_id)
                                 })
-                                // If original node not found, use focused leaf
-                                .or_else(|| self.dock_state.main_surface().focused_leaf())
+                                .filter(|node_index| allow_main_node(*node_index));
+
+                            let restored_to_original_node = original_dst_node.is_some();
+
+                            let dst_node = original_dst_node
                                 .or_else(|| {
-                                    // Find the first visible, non-collapsed leaf node
+                                    self.restore_default_surface_node
+                                        .as_ref()
+                                        .and_then(|resolver| {
+                                            self.dock_state
+                                                .get_tab((src_surface, src_node, src_tab))
+                                                .and_then(|tab| resolver(self.dock_state, tab))
+                                        })
+                                        .filter(|node_index| allow_main_node(*node_index))
+                                })
+                                .or_else(|| {
+                                    self.dock_state
+                                        .main_surface()
+                                        .focused_leaf()
+                                        .filter(|node_index| allow_main_node(*node_index))
+                                })
+                                .or_else(|| {
                                     for node_index in
                                         self.dock_state.main_surface().breadth_first_index_iter()
                                     {
@@ -215,7 +241,10 @@ impl<Tab> DockArea<'_, Tab> {
                                                 [node_index]
                                                 .get_leaf()
                                             {
-                                                if !leaf.hidden && !leaf.collapsed {
+                                                if !leaf.hidden
+                                                    && !leaf.collapsed
+                                                    && allow_main_node(node_index)
+                                                {
                                                     return Some(node_index);
                                                 }
                                             }
@@ -226,7 +255,8 @@ impl<Tab> DockArea<'_, Tab> {
                                 .unwrap_or(NodeIndex::root());
 
                             // Determine the insert position
-                            let tab_insert = if let Some(original_index) = original_tab_index {
+                            let tab_insert = if restored_to_original_node {
+                                if let Some(original_index) = original_tab_index {
                                 // Try to insert at original position
                                 let leaf_len = self.dock_state.main_surface()[dst_node]
                                     .get_leaf()
@@ -236,6 +266,9 @@ impl<Tab> DockArea<'_, Tab> {
                                 // If original index is still valid, use it; otherwise append
                                 if original_index <= leaf_len {
                                     TabInsert::Insert(TabIndex(original_index))
+                                } else {
+                                    TabInsert::Append
+                                }
                                 } else {
                                     TabInsert::Append
                                 }

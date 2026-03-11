@@ -16,6 +16,7 @@ use tab_removal::TabRemoval;
 use egui::{emath::*, Id, Modifiers, Ui};
 type TabTailContentFn = Box<dyn FnMut(&mut Ui, SurfaceIndex, NodeIndex, TabIndex)>;
 type TabTailPaddingFn = Box<dyn FnMut(SurfaceIndex, NodeIndex, TabIndex) -> f32>;
+type RestoreDefaultSurfaceNodeFn<Tab> = Box<dyn Fn(&DockState<Tab>, &Tab) -> Option<NodeIndex>>;
 
 /// Displays a [`DockState`] in `egui`.
 pub struct DockArea<'tree, Tab> {
@@ -40,6 +41,7 @@ pub struct DockArea<'tree, Tab> {
     window_bounds: Option<Rect>,
     tab_bar_tail_content: Option<TabTailContentFn>,
     tab_bar_tail_padding: Option<TabTailPaddingFn>,
+    restore_default_surface_node: Option<RestoreDefaultSurfaceNodeFn<Tab>>,
     to_remove: Vec<TabRemoval>,
     to_detach: Vec<(SurfaceIndex, NodeIndex, TabIndex)>,
     new_focused: Option<(SurfaceIndex, NodeIndex)>,
@@ -77,6 +79,7 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
             secondary_button_context_menu: true,
             tab_bar_tail_content: None,
             tab_bar_tail_padding: None,
+            restore_default_surface_node: None,
         }
     }
 
@@ -91,6 +94,16 @@ impl<'tree, Tab> DockArea<'tree, Tab> {
     #[inline(always)]
     pub fn style(mut self, style: Style) -> Self {
         self.style = Some(style);
+        self
+    }
+
+    /// Sets a callback used to resolve the default-surface node when a detached window is closed.
+    #[inline(always)]
+    pub fn restore_default_surface_node(
+        mut self,
+        callback: impl Fn(&DockState<Tab>, &Tab) -> Option<NodeIndex> + 'static,
+    ) -> Self {
+        self.restore_default_surface_node = Some(Box::new(callback));
         self
     }
 
